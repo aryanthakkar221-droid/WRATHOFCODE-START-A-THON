@@ -355,6 +355,7 @@ const store = {
     const timer = setInterval(() => onTick(Math.floor((Date.now() - t0) / 1000)), 250);
     rec.start(250);
     return {
+      stream,
       stop: () => new Promise((resolve) => {
         rec.onstop = () => {
           clearInterval(timer);
@@ -371,6 +372,29 @@ const store = {
   const mmss = (s) => String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
   const MIC_SVG = ic("mic");
   const STOP_SVG = `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>`;
+
+  // Voice level bars: real microphone level (Web Audio), random fallback if unavailable.
+  function levelBars(stream, box) {
+    const bars = [...box.children];
+    let an = null, data = null, ac = null;
+    try {
+      ac = new (window.AudioContext || window.webkitAudioContext)();
+      an = ac.createAnalyser(); an.fftSize = 128;
+      ac.createMediaStreamSource(stream).connect(an);
+      data = new Uint8Array(an.frequencyBinCount);
+    } catch (_) { an = null; }
+    const tick = () => {
+      if (!document.body.contains(box) || !box.parentElement.classList.contains("on")) { if (ac) ac.close().catch(() => {}); return; }
+      if (an) an.getByteFrequencyData(data);
+      bars.forEach((b, i) => {
+        const d = Math.abs(i - (bars.length - 1) / 2) / (bars.length / 2);   // 0 in the middle, 1 at the edges
+        const v = an ? Math.min(1, (data[Math.floor(d * data.length * 0.45)] / 255) * (1.25 - d * 0.6)) : Math.random() * 0.8;
+        b.style.height = Math.max(12, Math.round(v * 100)) + "%";
+      });
+      setTimeout(() => requestAnimationFrame(tick), 70);
+    };
+    tick();
+  }
 
   // ------------------------------------------------------------ screen: record
   let activeRecorder = null;
@@ -390,8 +414,12 @@ const store = {
           <p class="q-text" id="qtext">${esc(QUESTIONS[0])}</p>
           <div class="q-dots">${QUESTIONS.map((_, i) => `<i class="${i === 0 ? "on" : ""}"></i>`).join("")}</div>
         </div>
-        <button class="mic" id="mic" type="button" aria-label="Start recording">${MIC_SVG}</button>
-        <div class="rec-status" id="recStatus"><span class="muted">Tap to start</span></div>
+        <div class="voice" id="voice">
+          <button class="mic" id="mic" type="button" aria-label="Start recording">${MIC_SVG}</button>
+          <span class="voice-time" id="vtime">00:00</span>
+          <div class="voice-bars" id="vbars" aria-hidden="true">${"<i></i>".repeat(48)}</div>
+          <div class="rec-status" id="recStatus">Tap to speak</div>
+        </div>
         <div class="row" style="margin-top:14px;justify-content:center">
           <button class="btn" id="nextQ" type="button" hidden>Next question${ic("arrow-right")}</button>
           <button class="btn primary" id="done" type="button" hidden>${ic("check")}Done</button>
@@ -434,7 +462,7 @@ const store = {
       }
       try {
         activeRecorder = await startRecorder((s) => {
-          status.innerHTML = `<span class="dot"></span> Recording ${mmss(s)}`;
+          $("vtime").textContent = mmss(s);
         });
       } catch (e) {
         toast("Microphone blocked. You can type instead.");
@@ -442,9 +470,11 @@ const store = {
         return;
       }
       mic.classList.add("rec");
-      mic.innerHTML = STOP_SVG;
+      mic.innerHTML = `<span class="spin-sq" aria-hidden="true"></span>`;
+      $("voice").classList.add("on");
+      levelBars(activeRecorder.stream, $("vbars"));
       mic.setAttribute("aria-label", "Stop recording");
-      status.innerHTML = `<span class="dot"></span> Recording 00:00`;
+      status.innerHTML = `<span class="dot"></span> Listening…`;
       $("typeInstead").hidden = true;
       done.hidden = false;
       setQ(0);
@@ -453,6 +483,7 @@ const store = {
       if (!activeRecorder) return;
       const r = activeRecorder;
       activeRecorder = null;
+      const v = document.getElementById("voice"); if (v) v.classList.remove("on");
       const { blob, ext, seconds } = await r.stop();
       if (seconds < 2) {
         toast("That was very short. Try again and talk a little longer");

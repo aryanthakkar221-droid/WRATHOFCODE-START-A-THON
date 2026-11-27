@@ -611,3 +611,24 @@ body.login-mode::before {
 .practice-card .btn { flex: none; }
 .practice-card.done { background: #FBFAFD; }
 .section-label .i { width: 16px; height: 16px; }
+
+/* ---------- voice input (Record) ---------- */
+.voice { display: flex; flex-direction: column; align-items: center; gap: 10px; margin: 26px 0 8px; width: 100%; }
+.record-hero .voice .mic {
+  width: 96px; height: 96px; margin: 0; border-radius: 24px; background: var(--surface); color: var(--ink);
+  border: 1px solid var(--line-2); box-shadow: var(--shadow); animation: none;
+  transition: background .2s var(--ease), transform .12s var(--ease), box-shadow .2s var(--ease);
+}
+.record-hero .voice .mic:hover { background: #F4F1F8; transform: none; box-shadow: var(--shadow-lg); }
+.record-hero .voice .mic:active { transform: scale(.97); }
+.record-hero .voice .mic svg { width: 36px; height: 36px; color: var(--ink); opacity: .8; }
+.record-hero .voice .mic.rec { background: var(--surface); box-shadow: 0 0 0 6px rgba(123, 63, 228, .10), var(--shadow-lg); }
+.spin-sq { width: 30px; height: 30px; border-radius: 6px; background: var(--ink); animation: spin 3s linear infinite; }
+.voice-time { font-family: var(--mono); font-size: 15px; color: rgba(28, 22, 36, .35); font-variant-numeric: tabular-nums; transition: color .3s var(--ease); }
+.voice.on .voice-time { color: var(--ink); }
+.voice-bars { height: 24px; width: min(300px, 100%); display: flex; align-items: center; justify-content: center; gap: 2px; }
+.voice-bars i { width: 3px; height: 4px; flex: none; border-radius: 3px; background: rgba(28, 22, 36, .12); transition: height .12s ease-out, background .3s; }
+.voice.on .voice-bars i { background: var(--violet); opacity: .75; }
+.voice .rec-status { font-family: var(--sans); text-transform: none; letter-spacing: 0; font-size: 15px; color: var(--ink-2); }
+.voice.on .rec-status { color: var(--ink); }
+@media (prefers-reduced-motion: reduce) { .voice-bars i { transition: none; } }
