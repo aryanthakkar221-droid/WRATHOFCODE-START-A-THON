@@ -555,7 +555,7 @@ const store = {
 
   function screenAsk(preset) {
     render(`
-      <h1>Ask the experts</h1>
+      <h1>Ask KnowFlow</h1>
       <p class="sub">Ask in your own words, in any language. Answers come from real entries by your colleagues.</p>
       <form class="searchbar" id="askForm">
         <input type="search" id="q" placeholder="e.g. packaging line jams, what do I do?" autocomplete="off" enterkeyhint="search">
@@ -585,10 +585,8 @@ const store = {
   function answerHTML(r) {
     if (!r.answered) {
       return `<div class="answer none">
-        <div class="eyebrow">${ic("file-question")}No approved card found</div>
-        <p class="answer-summary">${esc(r.summary)}</p>
-        ${r.suggest_ask ? `<p>Best person to ask: <b>${esc(r.suggest_ask)}</b></p>` : ""}
-        <p class="small muted">We sent your question to the experts. It becomes their next question in the shift log.</p>
+        <div class="eyebrow">${ic("file-question")}No answer yet</div>
+        <p class="answer-summary">No approved card found yet. Your question has been sent to the experts.</p>
       </div>`;
     }
     return `<div class="answer">
