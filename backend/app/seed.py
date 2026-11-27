@@ -13,12 +13,13 @@ from datetime import datetime, timedelta, timezone
 
 from . import db
 
+# (name, years of experience, retires in N months, status, available for calls)
 EXPERTS = [
-    ("Herr Müller", 32, 6),
-    ("Frau Schneider", 18, None),
-    ("Herr Weber", 25, 10),
-    ("Ahmed", 1, None),
-    ("Lena Kowalski", 7, None),
+    ("Herr Müller", 32, 6, None, None),
+    ("Frau Schneider", 18, None, None, None),
+    ("Herr Weber", 38, None, "retired 2025", "Thursdays"),
+    ("Ahmed", 1, None, None, None),
+    ("Lena Kowalski", 7, None, None, None),
 ]
 
 
@@ -104,7 +105,21 @@ ENTRIES = [
      "Wrong parts look fine at first glance. Check them with the gauge.",
      ["jam", "strip"], 2, 0, "approved"),
 
-    # ---- Compressor (Herr Weber and Herr Müller, both retiring soon)
+    # ---- Herr Weber (retired 2025): his know-how still helps
+    (40, "Herr Weber", "Press 2", "Pressing", "fix",
+     "Parts are not accurate. The size changes during the shift.",
+     "The press gets warm, so the tool grows a little.",
+     "Check a part with the gauge every hour. If it drifts, move the stop back by one mark.",
+     "Don't change the setting while the press is running.",
+     ["size", "accuracy", "warm"], 6, 0, "approved"),
+    (70, "Herr Weber", "Press 2", "Pressing", "fix",
+     "The press makes a loud knock on every stroke.",
+     "The tool clamp has come a little loose.",
+     "Switch off, lock out, and tighten the four clamp bolts in a cross pattern.",
+     "Never reach into the press without locking it out first.",
+     ["noise", "clamp", "safety"], 4, 0, "approved"),
+
+    # ---- Compressor (Herr Müller retires soon, Herr Weber is retired)
     (33, "Herr Müller", "Compressor", "Compressed air", "fix",
      "Air pressure drops at night.",
      "A leak at a hose connection near Machine 1.",
@@ -158,9 +173,10 @@ def seed(reset: bool = False) -> int:
         elif c.execute("SELECT COUNT(*) FROM cards").fetchone()[0]:
             c.executemany("INSERT OR IGNORE INTO shift_plan VALUES (?,?,?)", SHIFT_PLAN)
             return 0
-        c.executemany("INSERT OR REPLACE INTO experts VALUES (?,?,?)", EXPERTS)
+        c.executemany("INSERT OR REPLACE INTO experts (name, years_experience, retires_in_months, status, available) "
+                      "VALUES (?,?,?,?,?)", EXPERTS)
         c.executemany("INSERT OR REPLACE INTO shift_plan VALUES (?,?,?)", SHIFT_PLAN)
-        years = {n: y for n, y, _ in EXPERTS}
+        years = {e[0]: e[1] for e in EXPERTS}
         for (days, author, machine, process, kind, problem, cause, solution, warning, tags,
              worked, failed, status) in ENTRIES:
             date = _ago(days)

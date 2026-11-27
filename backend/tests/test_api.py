@@ -20,7 +20,7 @@ def setup_module(_):
 
 def test_health():
     h = client.get("/health").json()
-    assert h["ok"] and h["cards"] == 16
+    assert h["ok"] and h["cards"] == 18
 
 
 def test_alerts_tell_the_demo_story():
@@ -28,7 +28,6 @@ def test_alerts_tell_the_demo_story():
     msgs = " | ".join(a["message"] for a in alerts)
     assert any(a["type"] == "recurring_problem" and a["machine_id"] == "packaging-machine" and a["count"] == 3 for a in alerts), msgs
     assert any(a["type"] == "knowledge_risk" and a["expert"] == "Herr Müller" and a["machine_id"] == "packaging-machine" for a in alerts), msgs
-    assert any(a["type"] == "knowledge_risk" and a["expert"] == "Herr Müller" and a["machine_id"] == "press-2" for a in alerts), msgs
     assert any(a["type"] == "disputed_fix" for a in alerts), msgs
 
 
@@ -93,7 +92,7 @@ def test_audio_without_stt_key_gives_clear_error():
 def test_dashboard_endpoints():
     risk = client.get("/risk-map").json()
     press = next(r for r in risk if r["machine_id"] == "press-2")
-    assert press["risk"] == "high" and press["experts_retiring_soon"] == ["Herr Müller"]
+    assert press["risk"] == "high" and press["experts_retiring_soon"] == ["Herr Müller", "Herr Weber"]
     s = client.get("/stats").json()
     assert s["cards_approved"] >= 15 and s["meetings"] >= 1
     assert client.get("/machines").json()
@@ -208,3 +207,12 @@ def test_meeting_machine_from_title():
     r = client.post("/meetings", data={"title": "Press 2 weekly", "participants": "Herr Müller", "consent": "true",
         "text": "Problem: parts came out too big after the tool change. We decided to always check the first part."}).json()
     assert r["cards"] and all(c["machine"] == "Press 2" for c in r["cards"])
+
+
+def test_retired_expert_weber():
+    weber = next(x for x in client.get("/experts").json() if x["name"] == "Herr Weber")
+    assert weber["years_experience"] == 38 and weber["status"] == "retired 2025" and weber["available"] == "Thursdays"
+    mine = [c for c in client.get("/entries", params={"status": "approved"}).json() if c["author"] == "Herr Weber"]
+    assert len(mine) == 4 and all(c["worked_count"] and c["last_confirmed"] for c in mine)
+    r = client.post("/ask", json={"question": "Press 2 parts are not accurate, what do I do?"}).json()
+    assert any(s["author"] == "Herr Weber" for s in r["sources"]), r
