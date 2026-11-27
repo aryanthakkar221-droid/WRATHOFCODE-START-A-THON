@@ -151,3 +151,37 @@ def test_fix_it_challenge_offline():
     assert other["card_id"] != g["card_id"]
     draft = client.get("/entries", params={"status": "draft"}).json()[0]
     assert client.post("/challenge", json={"card_id": draft["id"]}).status_code == 400
+
+
+def test_newer_worker_passing_on_expert_tip_becomes_expert_draft():
+    r = client.post("/entries", data={
+        "author": "Ahmed", "machine": "Machine 1",
+        "text": "The door would not open after the program. Herr Müller told me to set the air "
+                "pressure back to 6 bar. I did that and it worked."}).json()
+    card = r["card"]
+    assert r["tip_from"] == "Herr Müller"
+    assert card["author"] == "Herr Müller" and card["shared_by"] == "Ahmed" and card["status"] == "draft"
+    assert card["author_years_experience"] == 32
+    # only the expert can approve it
+    assert client.post("/cards/%d/approve" % card["id"], json={"expert": "Ahmed"}).status_code == 403
+    ok = client.post("/cards/%d/approve" % card["id"], json={"expert": "Herr Müller"}).json()
+    assert ok["status"] == "approved" and ok["approved_by"] == "Herr Müller"
+
+
+def test_newer_worker_nobody_could_help_goes_to_open_questions():
+    r = client.post("/entries", data={
+        "author": "Ahmed", "machine": "Compressor",
+        "text": "The compressor made a clicking sound all shift. I tried restarting it but it did "
+                "not work. Nobody could help me."}).json()
+    assert r["open_question_id"] and r["tip_from"] is None
+    qs = client.get("/open-questions").json()
+    assert any(q["id"] == r["open_question_id"] and q["asked_by"] == "Ahmed" for q in qs)
+
+
+def test_expert_entry_is_unchanged():
+    r = client.post("/entries", data={
+        "author": "Frau Schneider", "machine": "Machine 1",
+        "text": "Chips wrapped around the part again. Herr Müller told me last year to feed faster. "
+                "I fed faster and it was fine."}).json()
+    assert r["card"]["author"] == "Frau Schneider" and r["card"]["shared_by"] is None
+    assert r["tip_from"] is None and r["open_question_id"] is None

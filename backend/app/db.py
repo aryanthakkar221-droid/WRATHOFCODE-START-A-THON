@@ -40,7 +40,8 @@ CREATE TABLE IF NOT EXISTS cards (
     worked_count INTEGER NOT NULL DEFAULT 0,
     failed_count INTEGER NOT NULL DEFAULT 0,
     last_confirmed TEXT,
-    audio_path TEXT
+    audio_path TEXT,
+    shared_by TEXT                             -- newer worker who passed on an expert's tip
 );
 CREATE TABLE IF NOT EXISTS meetings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -89,6 +90,9 @@ def init() -> None:
     os.makedirs(AUDIO_DIR, exist_ok=True)
     with conn() as c:
         c.executescript(SCHEMA)
+        cols = {r[1] for r in c.execute("PRAGMA table_info(cards)").fetchall()}
+        if "shared_by" not in cols:  # database created before this column existed
+            c.execute("ALTER TABLE cards ADD COLUMN shared_by TEXT")
 
 
 def card_row_to_dict(r: sqlite3.Row) -> Dict[str, Any]:
@@ -117,7 +121,7 @@ def insert_card(c: sqlite3.Connection, card: Dict[str, Any]) -> int:
         "date", "author", "author_years_experience", "machine", "machine_id", "process", "kind",
         "problem", "cause", "solution", "warning", "tags", "transcript", "source", "meeting_id",
         "status", "approved_by", "approved_at", "worked_count", "failed_count", "last_confirmed",
-        "audio_path",
+        "audio_path", "shared_by",
     ]
     row = dict(card)
     row.setdefault("date", now_iso())
@@ -154,6 +158,9 @@ def list_cards(
         args.append(status)
     q += " ORDER BY date DESC, id DESC"
     return [card_row_to_dict(r) for r in c.execute(q, args).fetchall()]
+
+
+EXPERT_YEARS = 5  # 5+ years = expert questions; below = questions for newer workers
 
 
 def expert_years(c: sqlite3.Connection, name: str) -> Optional[int]:

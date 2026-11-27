@@ -143,16 +143,26 @@ async def create_entry(
         tag_rows = c.execute("SELECT tags FROM cards WHERE status='approved'" +
                              (" AND machine_id=?" if machine else ""),
                              ([db.slugify(machine)] if machine else [])).fetchall()
+        experts = {r["name"]: r["years_experience"] for r in c.execute("SELECT * FROM experts").fetchall()}
     known_tags = sorted({t for r in tag_rows for t in json.loads(r[0])})
-    structured = ai.structure_entry(transcript, machine, known, known_tags)
+    author_years = experts.get(author)
+    newer = author_years is None or author_years < db.EXPERT_YEARS
+    senior = [n for n, y in experts.items() if y is not None and y >= db.EXPERT_YEARS and n != author]
+    structured = ai.structure_entry(transcript, machine, known, known_tags, senior if newer else None)
     if not any(structured.get(k) for k in ("problem", "solution", "warning")):
         _delete_audio(audio_path)
         raise HTTPException(422, "I heard you, but found no problem, fix or tip in it. "
                                  "Try: what was difficult, what did you do, what should others watch out for?")
+    # A newer worker passing on an expert's tip: the tip belongs to the expert, stays a
+    # draft, and only that expert can approve it.
+    tip_from = structured.get("learned_from") if newer else None
+    if tip_from not in senior:
+        tip_from = None
     with db.conn() as c:
         card_id = db.insert_card(c, {
-            "author": author,
-            "author_years_experience": db.expert_years(c, author),
+            "author": tip_from or author,
+            "shared_by": author if tip_from else None,
+            "author_years_experience": db.expert_years(c, tip_from or author),
             "machine": structured.get("machine"),
             "process": structured.get("process"),
             "kind": structured.get("kind") or "fix",
@@ -165,7 +175,13 @@ async def create_entry(
             "audio_path": audio_path,
         })
         card = db.get_card(c, card_id)
-    return {"transcript": transcript, "card": card}
+        open_q = None
+        if newer and structured.get("nobody_could_help") and not tip_from:
+            cur = c.execute(
+                "INSERT INTO open_questions (date, question, machine_id, asked_by) VALUES (?,?,?,?)",
+                (db.now_iso(), card["problem"] or transcript[:200], card["machine_id"], author))
+            open_q = cur.lastrowid
+    return {"transcript": transcript, "card": card, "tip_from": tip_from, "open_question_id": open_q}
 
 
 class EntryJSON(BaseModel):
@@ -230,7 +246,9 @@ def approve_card(card_id: int, body: Approve) -> Dict[str, Any]:
     """Card goes live. Privacy by design: the audio recording is deleted now, only the
     approved text is kept."""
     with db.conn() as c:
-        _card_or_404(c, card_id)
+        card = _card_or_404(c, card_id)
+        if card.get("shared_by") and body.expert != card["author"]:
+            raise HTTPException(403, "Only %s can approve this tip." % card["author"])
         r = c.execute("SELECT audio_path FROM cards WHERE id=?", (card_id,)).fetchone()
         _delete_audio(r["audio_path"])
         c.execute(

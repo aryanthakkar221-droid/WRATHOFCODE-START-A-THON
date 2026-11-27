@@ -68,7 +68,10 @@ STRUCTURE_SYSTEM = (
     "tags are 1-4 short lowercase English keywords for the problem type (e.g. 'spindle', "
     "'noise'), always English so patterns match across languages. If the machine matches one "
     "of the known machines (also when said in another language, e.g. 'Verpackungslinie' = "
-    "'Packaging line'), use that exact known name."
+    "'Packaging line'), use that exact known name. learned_from: if the worker says a "
+    "colleague told or showed them the fix, that colleague's name exactly as in the list of "
+    "experts if given, else null. nobody_could_help: true only if the problem was NOT solved "
+    "and the worker says nobody could help or nobody knew."
 )
 
 CARD_SCHEMA = {
@@ -82,16 +85,22 @@ CARD_SCHEMA = {
         "solution": _nullable("string"),
         "warning": _nullable("string"),
         "tags": {"type": "array", "items": {"type": "string"}},
+        "learned_from": _nullable("string"),
+        "nobody_could_help": {"type": "boolean"},
     },
-    "required": ["machine", "process", "kind", "problem", "cause", "solution", "warning", "tags"],
+    "required": ["machine", "process", "kind", "problem", "cause", "solution", "warning", "tags",
+                 "learned_from", "nobody_could_help"],
     "additionalProperties": False,
 }
 
 
 def structure_entry(transcript: str, machine_hint: Optional[str] = None,
                     known_machines: Optional[List[str]] = None,
-                    known_tags: Optional[List[str]] = None) -> Dict[str, Any]:
+                    known_tags: Optional[List[str]] = None,
+                    experts: Optional[List[str]] = None) -> Dict[str, Any]:
     user = transcript if not machine_hint else "Machine: %s\n\n%s" % (machine_hint, transcript)
+    if experts:
+        user = "Experts: %s\n\n%s" % (", ".join(experts), user)
     if known_machines and not machine_hint:
         user = "Known machines: %s\n\nShift report:\n%s" % (", ".join(known_machines), user)
     if known_tags:
@@ -100,6 +109,8 @@ def structure_entry(transcript: str, machine_hint: Optional[str] = None,
     out = _call_json(STRUCTURE_SYSTEM, user, CARD_SCHEMA, "card")
     if out is None:
         out = _offline_structure(transcript)
+        out["learned_from"] = find_learned_from(transcript, experts or [])
+        out["nobody_could_help"] = bool(_NOBODY.search(transcript))
     if machine_hint:
         out["machine"] = machine_hint
     out["tags"] = [t.lower().strip() for t in (out.get("tags") or []) if t.strip()][:4]
@@ -132,6 +143,22 @@ def _offline_structure(text: str) -> Dict[str, Any]:
         "warning": warning,
         "tags": words[:3],
     }
+
+
+_NOBODY = re.compile(r"nobody|no one|no-one|niemand|keiner (wusste|konnte)|could(n't| not) help|"
+                     r"konnte (mir )?nicht helfen", re.I)
+_TOLD = r"(told|said|showed|explained|helped|says|sagte|meinte|zeigte|gezeigt|erklärt|hat mir)"
+
+
+def find_learned_from(text: str, experts: List[str]) -> Optional[str]:
+    """Offline rule: an expert's name (or surname) near 'told me / showed me / sagte'."""
+    for name in experts:
+        short = re.sub(r"^(Herr|Frau)\s+", "", name)
+        for n in {name, short}:
+            pat = r"(%s)\W+(\w+\W+){0,3}%s|%s\W+(\w+\W+){0,3}(%s)" % (re.escape(n), _TOLD, _TOLD, re.escape(n))
+            if re.search(pat, text, re.I):
+                return name
+    return None
 
 
 # ---------------------------------------------------------------- answering

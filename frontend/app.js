@@ -36,11 +36,27 @@ const store = {
     document.querySelectorAll("[data-lang]").forEach((x) => x.classList.toggle("on", x.dataset.lang === state.lang));
   });
 
-  const QUESTIONS = [
+  // Guided questions depend on experience: 5+ years = expert, below = newer worker.
+  const EXPERT_YEARS = 5;
+  const QUESTIONS_EXPERT = [
     "What was difficult today?",
-    "What did you solve, and how?",
+    "How did you fix it?",
     "What should the next person watch out for?",
   ];
+  const QUESTIONS_NEWER = [
+    "What was difficult or unclear today?",
+    "What did you try, and did it work?",
+    "Who helped you, and what did they tell you?",
+  ];
+  function userYears() {
+    const me = state.experts.find((x) => x.name === state.user);
+    return me ? me.years_experience : null;
+  }
+  function isExpert() {
+    const y = userYears();
+    return y != null && y >= EXPERT_YEARS;
+  }
+  function questionsFor() { return isExpert() ? QUESTIONS_EXPERT : QUESTIONS_NEWER; }
 
   const view = document.getElementById("view");
   const toastEl = document.getElementById("toast");
@@ -137,6 +153,7 @@ const store = {
           ${c.machine ? `<a class="badge machine" href="#/m/${esc(c.machine_id)}">⚙️ ${esc(c.machine)}</a>` : ""}
           ${kindCls || c.kind !== "fix" ? `<span class="badge ${kindCls}">${kindLabel}</span>` : ""}
           ${c.source === "meeting" ? `<span class="badge meeting">From meeting</span>` : ""}
+          ${c.shared_by ? `<span class="badge machine">💬 Tip from ${esc(c.author)}, shared by ${esc(c.shared_by)}</span>` : ""}
           ${c.failed_count > c.worked_count ? `<span class="badge bad">⚠ Often didn't work</span>` : c.outdated ? `<span class="badge bad">⚠ Outdated</span>` : ""}
         </div>
         <div class="badges">${status}</div>
@@ -165,7 +182,9 @@ const store = {
       </div>` : ""}
       ${opts.approve && c.status !== "approved" ? `
       <div class="card-actions">
-        <button class="btn primary" data-approve="${c.id}">✓ Approve</button>
+        ${c.shared_by && c.author !== state.user
+          ? `<span class="badge draft" style="flex-basis:100%;text-align:center;padding:10px">⏳ Waiting for ${esc(c.author)} to approve</span>`
+          : `<button class="btn primary" data-approve="${c.id}">✓ Approve</button>`}
         <button class="btn" data-edit="${c.id}">✎ Edit</button>
         <button class="btn danger" data-reject="${c.id}">Discard</button>
       </div>` : ""}
@@ -328,6 +347,7 @@ const store = {
   let activeRecorder = null;
 
   async function screenRecord() {
+    const QUESTIONS = questionsFor();
     const machineOpts = state.machines.map((m) => m.machine);
     const last = store.get("machine") || machineOpts[0] || "";
     render(`
@@ -457,8 +477,11 @@ const store = {
       try {
         const res = await api("/entries", { method: "POST", form });
         $("result").innerHTML = `
-          <h2>Your card is ready</h2>
-          <p class="sub">Check it, then approve it so the team can use it.</p>
+          <h2>${res.tip_from ? "Thanks for passing it on!" : "Your card is ready"}</h2>
+          <p class="sub">${res.tip_from
+            ? `This tip is from ${esc(res.tip_from)}. It stays a draft until ${esc(res.tip_from)} approves it.`
+            : "Check it, then approve it so the team can use it."}</p>
+          ${res.open_question_id ? `<div class="loop-note" style="margin-bottom:12px">❓ <b>Nobody could help?</b> We added your question for the experts. They'll see it in their next shift log.</div>` : ""}
           ${cardHTML(res.card, { approve: true, showTranscript: true })}
           <button class="btn ghost block" id="again" style="margin-top:12px">🎙️ Log another</button>`;
         $("again").addEventListener("click", screenRecord);
@@ -866,6 +889,6 @@ const store = {
 
   window.addEventListener("hashchange", route);
   renderWho();
-  refreshMachines().finally(route);
+  Promise.all([refreshMachines(), api("/experts").then((x) => (state.experts = x)).catch(() => {})]).finally(route);
 })();
 
