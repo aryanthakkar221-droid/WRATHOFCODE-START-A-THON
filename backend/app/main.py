@@ -119,6 +119,13 @@ def reset_demo() -> Dict[str, Any]:
     return {"seeded_cards": seed.seed(reset=True)}
 
 
+@app.get("/shift-plan", tags=["meta"])
+def shift_plan() -> List[Dict[str, Any]]:
+    """Demo shift plan: who works at which machine (used when a recording names no machine)."""
+    with db.conn() as c:
+        return [dict(r) for r in c.execute("SELECT * FROM shift_plan ORDER BY name").fetchall()]
+
+
 @app.get("/experts", tags=["meta"])
 def experts() -> List[Dict[str, Any]]:
     with db.conn() as c:
@@ -139,7 +146,8 @@ async def create_entry(
     that the expert approves before it goes live."""
     transcript, audio_path = await _text_from(text, audio, language)
     with db.conn() as c:
-        known = [r[0] for r in c.execute("SELECT DISTINCT machine FROM cards WHERE machine IS NOT NULL").fetchall()]
+        known = db.known_machine_names(c)
+        planned = db.shift_machine(c, author)
         tag_rows = c.execute("SELECT tags FROM cards WHERE status='approved'" +
                              (" AND machine_id=?" if machine else ""),
                              ([db.slugify(machine)] if machine else [])).fetchall()
@@ -149,6 +157,13 @@ async def create_entry(
     newer = author_years is None or author_years < db.EXPERT_YEARS
     senior = [n for n, y in experts.items() if y is not None and y >= db.EXPERT_YEARS and n != author]
     structured = ai.structure_entry(transcript, machine, known, known_tags, senior if newer else None)
+    # Which machine? 1) chosen by hand  2) what the worker said  3) their shift plan
+    if machine:
+        machine_source = "chosen"
+    else:
+        said = db.match_machine(structured.get("machine"), known) or db.find_machine_in_text(transcript, known)
+        machine_source = "said" if said else ("shift plan" if planned else "unknown")
+        structured["machine"] = said or planned
     if not any(structured.get(k) for k in ("problem", "solution", "warning")):
         _delete_audio(audio_path)
         raise HTTPException(422, "I heard you, but found no problem, fix or tip in it. "
@@ -181,7 +196,8 @@ async def create_entry(
                 "INSERT INTO open_questions (date, question, machine_id, asked_by) VALUES (?,?,?,?)",
                 (db.now_iso(), card["problem"] or transcript[:200], card["machine_id"], author))
             open_q = cur.lastrowid
-    return {"transcript": transcript, "card": card, "tip_from": tip_from, "open_question_id": open_q}
+    return {"transcript": transcript, "card": card, "tip_from": tip_from, "open_question_id": open_q,
+            "machine_source": machine_source, "machines": known}
 
 
 class EntryJSON(BaseModel):
@@ -489,7 +505,13 @@ async def create_meeting(
         raise HTTPException(400, "Consent required: everyone in the meeting must agree to the recording.")
     transcript, audio_path = await _text_from(text, audio, language)
     _delete_audio(audio_path)  # meetings never keep audio; only extracted knowledge stays
-    result = ai.extract_meeting(transcript)
+    with db.conn() as c:
+        known = db.known_machine_names(c)
+    result = ai.extract_meeting(transcript, known)
+    # machine per problem: what the AI found, else the meeting title, else the transcript
+    fallback = db.find_machine_in_text(title, known) or db.find_machine_in_text(transcript, known)
+    for p in result["problems"]:
+        p["machine"] = db.match_machine(p.get("machine"), known) or fallback
     people = [p.strip() for p in participants.split(",") if p.strip()]
     author = people[0] if people else "Meeting"
     with db.conn() as c:
@@ -507,12 +529,12 @@ async def create_meeting(
                 "source": "meeting", "meeting_id": meeting_id, "transcript": None}))
         for d in result["decisions"]:
             new_ids.append(db.insert_card(c, {
-                "author": author, "process": title, "kind": "decision", "problem": d["decision"],
+                "author": author, "machine": fallback, "process": title, "kind": "decision", "problem": d["decision"],
                 "cause": d.get("reason"), "tags": ["decision"], "source": "meeting",
                 "meeting_id": meeting_id}))
         for lesson in result["lessons_learned"]:
             new_ids.append(db.insert_card(c, {
-                "author": author, "process": title, "kind": "lesson", "problem": lesson,
+                "author": author, "machine": fallback, "process": title, "kind": "lesson", "problem": lesson,
                 "tags": ["lesson"], "source": "meeting", "meeting_id": meeting_id}))
         cards = [db.get_card(c, i) for i in new_ids]
     return {"meeting_id": meeting_id, "title": title, "participants": people,

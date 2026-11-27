@@ -185,3 +185,26 @@ def test_expert_entry_is_unchanged():
                 "I fed faster and it was fine."}).json()
     assert r["card"]["author"] == "Frau Schneider" and r["card"]["shared_by"] is None
     assert r["tip_from"] is None and r["open_question_id"] is None
+
+
+def test_machine_detected_from_words_or_shift_plan():
+    # names the machine (German alias) -> detected from what was said
+    r = client.post("/entries", data={"author": "Frau Schneider",
+        "text": "Der Kompressor wurde heiß und hat abgeschaltet. Luftfilter sauber gemacht, dann lief er wieder."}).json()
+    assert r["card"]["machine"] == "Compressor" and r["machine_source"] == "said"
+    # English, names the machine
+    r = client.post("/entries", data={"author": "Lena Kowalski",
+        "text": "Press 2 stopped with a pressure fault this morning. Let it run empty five minutes, then reset."}).json()
+    assert r["card"]["machine"] == "Press 2" and r["machine_source"] == "said"
+    # no machine named -> shift plan (Herr Müller works at the Packaging Machine)
+    r = client.post("/entries", data={"author": "Herr Müller",
+        "text": "The film jammed at the start. The hall was cold. Warm-up ten minutes at low speed fixed it."}).json()
+    assert r["card"]["machine"] == "Packaging Machine" and r["machine_source"] == "shift plan"
+    assert r["card"]["machine_id"] == "packaging-machine"
+    assert "Packaging Machine" in r["machines"]
+
+
+def test_meeting_machine_from_title():
+    r = client.post("/meetings", data={"title": "Press 2 weekly", "participants": "Herr Müller", "consent": "true",
+        "text": "Problem: parts came out too big after the tool change. We decided to always check the first part."}).json()
+    assert r["cards"] and all(c["machine"] == "Press 2" for c in r["cards"])

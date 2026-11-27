@@ -386,3 +386,11 @@ a.list-item:active, a.alert:active, a.risk:active { transform: scale(.985); }
 /* badges wrap to a new line instead of running off the card */
 .kcard-head { flex-wrap: wrap; }
 .kcard-head .badges { min-width: 0; }
+
+/* machine detected after recording */
+.detected { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; background: var(--accent-soft, #e8f3df);
+  border-radius: 14px; padding: 12px 14px; margin: 0 0 12px; }
+.detected .det-text { flex: 1 1 200px; font-size: 17px; }
+.detected .det-text small { display: block; font-size: 14px; }
+.det-pick { flex-basis: 100%; display: flex; gap: 10px; }
+.det-pick select { flex: 1; min-height: 48px; font-size: 16px; border-radius: 12px; padding: 0 12px; border: 1px solid var(--line, #ddd); background: #fff; }

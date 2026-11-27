@@ -37,8 +37,9 @@ flowchart LR
 
 | Step | What happens |
 |---|---|
-| **1. Record** | At the end of the shift the worker taps one button and talks. The AI asks: *What was difficult today? What did you solve, and how? What should the next person watch out for?* |
-| **2. Structure** | The AI turns the messy voice note into a card: problem → cause → solution → warning, tagged with machine, process, author and date. |
+| **1. Record** | At the end of the shift the worker taps one button and talks, no forms. Experts (5+ years) are asked: *What was difficult today? How did you fix it? What should the next person watch out for?* Newer workers are asked: *What was difficult or unclear? What did you try, and did it work? Who helped you, and what did they tell you?* |
+| **1b. Machine found automatically** | The AI finds the machine in what was said (German or English, e.g. "Presse 2" → Press 2). If none is named, it uses the person's machine from the shift plan. The worker sees "Detected: Packaging Machine" and can change it before approving. |
+| **2. Structure** | The AI turns the messy voice note into a card: problem → cause → solution → warning, tagged with machine, process, author and date. If a newer worker passes on an expert's tip, the card becomes "Tip from Herr Müller, shared by Ahmed" and only Herr Müller can approve it. If nobody could help, the question goes to the experts. |
 | **3. Find and learn** | A new employee asks in plain language ("packaging line jams, what do I do?") and gets the answer from real past entries, with who solved it and when. |
 | **4. Spot patterns** | The dashboard flags repeats and risks: "Packaging Machine: jam problem 4 times in the last 30 days", "Only Herr Müller has solved problems on Packaging Machine (retires in 6 months)." |
 | **5. Practise** | The **Fix-it Challenge** turns approved cards into a short game for new employees: a situation, 4 choices, what happens with each, and the expert's real tip. |

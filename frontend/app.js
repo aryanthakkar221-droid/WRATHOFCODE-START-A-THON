@@ -348,18 +348,11 @@ const store = {
 
   async function screenRecord() {
     const QUESTIONS = questionsFor();
-    const machineOpts = state.machines.map((m) => m.machine);
-    const last = store.get("machine") || machineOpts[0] || "";
     render(`
       <h1>Log your shift</h1>
       <p class="sub">Tap the mic and talk for about 2 minutes. KnowFlow writes the card for you.</p>
       <div id="loop"></div>
       <div class="stack">
-        <div>
-          <label class="field" for="machine">Machine</label>
-          <input type="text" id="machine" list="machineList" value="${esc(last)}" placeholder="e.g. Packaging Machine" autocomplete="off">
-          <datalist id="machineList">${machineOpts.map((m) => `<option value="${esc(m)}">`).join("")}</datalist>
-        </div>
         <div><label class="field">I'm speaking</label>${langChips()}</div>
       </div>
       <div class="record-hero" id="hero">
@@ -437,8 +430,6 @@ const store = {
       }
       const form = new FormData();
       form.append("author", state.user);
-      const m = $("machine").value.trim();
-      if (m) form.append("machine", m);
       if (state.lang) form.append("language", state.lang);
       form.append("audio", blob, "shift." + ext);
       submit(form);
@@ -458,15 +449,11 @@ const store = {
       if (t.length < 10) return toast("Write a little more first.");
       const form = new FormData();
       form.append("author", state.user);
-      const m = $("machine").value.trim();
-      if (m) form.append("machine", m);
       form.append("text", t);
       submit(form);
     });
 
     async function submit(form) {
-      const m = $("machine").value.trim();
-      if (m) store.set("machine", m);
       $("hero").hidden = true;
       $("typeBox").hidden = true;
       $("result").innerHTML = `
@@ -482,15 +469,51 @@ const store = {
             ? `This tip is from ${esc(res.tip_from)}. It stays a draft until ${esc(res.tip_from)} approves it.`
             : "Check it, then approve it so the team can use it."}</p>
           ${res.open_question_id ? `<div class="loop-note" style="margin-bottom:12px">❓ <b>Nobody could help?</b> We added your question for the experts. They'll see it in their next shift log.</div>` : ""}
-          ${cardHTML(res.card, { approve: true, showTranscript: true })}
+          ${detectedHTML(res)}
+          <div id="resultCard">${cardHTML(res.card, { approve: true, showTranscript: true })}</div>
           <button class="btn ghost block" id="again" style="margin-top:12px">🎙️ Log another</button>`;
         $("again").addEventListener("click", screenRecord);
+        wireDetected(res);
       } catch (e) {
         $("result").innerHTML = `<div class="empty"><span class="ei">😕</span>${esc(e.message)}</div>
           <button class="btn block" id="retry" style="margin-top:12px">Try again</button>`;
         $("retry").addEventListener("click", screenRecord);
       }
     }
+  }
+
+  // Machine is detected from what was said (or the shift plan); the expert can correct it.
+  function detectedHTML(res) {
+    const c = res.card;
+    const how = { said: "from what you said", "shift plan": "from your shift plan", chosen: "" }[res.machine_source] || "";
+    const opts = (res.machines || []).map((m) => `<option ${m === c.machine ? "selected" : ""}>${esc(m)}</option>`).join("");
+    return `
+      <div class="detected" id="detected">
+        <span class="det-text">📦 Detected: <b id="detName">${esc(c.machine || "No machine yet")}</b>
+          ${how ? `<small class="muted">${how}</small>` : ""}</span>
+        <button class="btn small" id="detChange" type="button">✎ Change</button>
+        <div class="det-pick" id="detPick" hidden>
+          <select id="detSelect" aria-label="Machine">${c.machine ? "" : "<option value=\"\">Pick a machine</option>"}${opts}</select>
+          <button class="btn small primary" id="detSave" type="button">✓ Save</button>
+        </div>
+      </div>`;
+  }
+  function wireDetected(res) {
+    const $ = (id) => document.getElementById(id);
+    $("detChange").addEventListener("click", () => { $("detPick").hidden = false; $("detChange").hidden = true; $("detSelect").focus(); });
+    $("detSave").addEventListener("click", async () => {
+      const m = $("detSelect").value;
+      if (!m) return toast("Pick a machine first.");
+      try {
+        const card = await api("/cards/" + res.card.id, { method: "PATCH", json: { machine: m } });
+        res.card = card;
+        $("detName").textContent = card.machine;
+        $("detPick").hidden = true; $("detChange").hidden = false;
+        $("resultCard").innerHTML = cardHTML(card, { approve: true, showTranscript: true });
+        toast("Machine changed to " + card.machine);
+        refreshMachines();
+      } catch (e) { toast(e.message); }
+    });
   }
 
   // ------------------------------------------------------------ screen: ask

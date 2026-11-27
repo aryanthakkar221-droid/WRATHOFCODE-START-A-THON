@@ -51,6 +51,11 @@ CREATE TABLE IF NOT EXISTS meetings (
     transcript TEXT,
     result TEXT NOT NULL DEFAULT '{}'
 );
+CREATE TABLE IF NOT EXISTS shift_plan (
+    name TEXT PRIMARY KEY,                     -- person
+    machine TEXT NOT NULL,                     -- where they work this shift
+    shift TEXT
+);
 CREATE TABLE IF NOT EXISTS open_questions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     date TEXT NOT NULL,
@@ -166,3 +171,52 @@ EXPERT_YEARS = 5  # 5+ years = expert questions; below = questions for newer wor
 def expert_years(c: sqlite3.Connection, name: str) -> Optional[int]:
     r = c.execute("SELECT years_experience FROM experts WHERE name=?", (name,)).fetchone()
     return r["years_experience"] if r else None
+
+
+# Spoken names for each machine (German and English), so "Verpackungsmaschine" or
+# "the press" still lands on the right machine page.
+MACHINE_ALIASES = {
+    "packaging-machine": ["packaging machine", "packaging", "verpackungsmaschine", "verpackung", "packmaschine"],
+    "machine-1": ["machine 1", "machine one", "maschine 1", "maschine eins"],
+    "press-2": ["press 2", "press two", "presse 2", "presse zwei", "the press", "die presse"],
+    "compressor": ["compressor", "kompressor"],
+}
+
+
+def match_machine(name: Optional[str], known: List[str]) -> Optional[str]:
+    """Map a name the AI or the worker used to one of the known machines, or None."""
+    if not name:
+        return None
+    low = name.strip().lower()
+    if low in ("unknown", "none", "null", "n/a", "unbekannt"):
+        return None
+    by_slug = {slugify(k): k for k in known}
+    if slugify(name) in by_slug:
+        return by_slug[slugify(name)]
+    for slug, aliases in MACHINE_ALIASES.items():
+        if slug in by_slug and any(a in low for a in aliases):
+            return by_slug[slug]
+    return None
+
+
+def find_machine_in_text(text: str, known: List[str]) -> Optional[str]:
+    low = " " + re.sub(r"\s+", " ", (text or "").lower()) + " "
+    by_slug = {slugify(k): k for k in known}
+    for k in known:  # exact names first
+        if " " + k.lower() in low:
+            return k
+    for slug, aliases in MACHINE_ALIASES.items():
+        if slug in by_slug and any(a in low for a in aliases):
+            return by_slug[slug]
+    return None
+
+
+def shift_machine(c: sqlite3.Connection, name: str) -> Optional[str]:
+    r = c.execute("SELECT machine FROM shift_plan WHERE name=?", (name,)).fetchone()
+    return r["machine"] if r else None
+
+
+def known_machine_names(c: sqlite3.Connection) -> List[str]:
+    rows = c.execute("SELECT DISTINCT machine FROM cards WHERE machine IS NOT NULL "
+                     "UNION SELECT machine FROM shift_plan").fetchall()
+    return sorted({r[0] for r in rows})

@@ -68,7 +68,8 @@ STRUCTURE_SYSTEM = (
     "tags are 1-4 short lowercase English keywords for the problem type (e.g. 'spindle', "
     "'noise'), always English so patterns match across languages. If the machine matches one "
     "of the known machines (also when said in another language, e.g. 'Verpackungslinie' = "
-    "'Packaging line'), use that exact known name. learned_from: if the worker says a "
+    "'Packaging line'), use that exact known name. If no machine is mentioned, machine is "
+    "'unknown'. learned_from: if the worker says a "
     "colleague told or showed them the fix, that colleague's name exactly as in the list of "
     "experts if given, else null. nobody_could_help: true only if the problem was NOT solved "
     "and the worker says nobody could help or nobody knew."
@@ -312,8 +313,12 @@ MEETING_SCHEMA = {
 }
 
 
-def extract_meeting(transcript: str) -> Dict[str, Any]:
-    out = _call_json(MEETING_SYSTEM, transcript, MEETING_SCHEMA, "meeting")
+def extract_meeting(transcript: str, known_machines: Optional[List[str]] = None) -> Dict[str, Any]:
+    user = transcript
+    if known_machines:
+        user = ("Known machines (for 'machine' use one of these exact names, also when said in "
+                "another language, or null): %s\n\nTranscript:\n%s" % (", ".join(known_machines), transcript))
+    out = _call_json(MEETING_SYSTEM, user, MEETING_SCHEMA, "meeting")
     if out is not None:
         return out
     sents = [s.strip() for s in re.split(r"(?<=[.!?])\s+|\n+", transcript) if s.strip()]

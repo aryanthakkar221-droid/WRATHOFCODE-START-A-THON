@@ -132,6 +132,15 @@ ENTRIES = [
      ["door", "pressure"], 0, 0, "draft"),
 ]
 
+# Demo shift plan: used when a recording does not name the machine.
+SHIFT_PLAN = [
+    ("Herr Müller", "Packaging Machine", "early shift"),
+    ("Ahmed", "Press 2", "early shift"),
+    ("Frau Schneider", "Machine 1", "late shift"),
+    ("Herr Weber", "Compressor", "early shift"),
+    ("Lena Kowalski", "Machine 1", "early shift"),
+]
+
 OPEN_QUESTIONS = [
     ("The compressor shows a red oil light. What do I do?", "compressor", "Ahmed"),
 ]
@@ -145,9 +154,12 @@ def seed(reset: bool = False) -> int:
             c.execute("DELETE FROM meetings")
             c.execute("DELETE FROM open_questions")
             c.execute("DELETE FROM experts")
+            c.execute("DELETE FROM shift_plan")
         elif c.execute("SELECT COUNT(*) FROM cards").fetchone()[0]:
+            c.executemany("INSERT OR IGNORE INTO shift_plan VALUES (?,?,?)", SHIFT_PLAN)
             return 0
         c.executemany("INSERT OR REPLACE INTO experts VALUES (?,?,?)", EXPERTS)
+        c.executemany("INSERT OR REPLACE INTO shift_plan VALUES (?,?,?)", SHIFT_PLAN)
         years = {n: y for n, y, _ in EXPERTS}
         for (days, author, machine, process, kind, problem, cause, solution, warning, tags,
              worked, failed, status) in ENTRIES:
