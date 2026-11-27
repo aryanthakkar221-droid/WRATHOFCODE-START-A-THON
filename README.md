@@ -15,7 +15,7 @@ Workers talk for 2 minutes at the end of each shift. The AI turns it into search
 
 ## The problem
 
-Baby boomers are retiring, and with them go experienced technicians, foremen and engineers. What they know is written down nowhere: why CNC 3 makes that noise, the trick for the packaging jam, what to check first. When they leave, the company loses it. New people learn it the hard way, through downtime, mistakes and slow onboarding.
+Baby boomers are retiring, and with them go experienced technicians, foremen and engineers. What they know is written down nowhere: why the Packaging Machine jams every Monday morning, the trick that fixes it, what to check first. When they leave, the company loses it. New people learn it the hard way, through downtime, mistakes and slow onboarding.
 
 Most factories already keep a **Schichtbuch** (shift log), but it is a paper book or an Excel file that nobody reads again. And asking experts to "write documentation" fails: they don't have the time, and they don't like writing.
 
@@ -40,7 +40,8 @@ flowchart LR
 | **1. Record** | At the end of the shift the worker taps one button and talks. The AI asks: *What was difficult today? What did you solve, and how? What should the next person watch out for?* |
 | **2. Structure** | The AI turns the messy voice note into a card: problem → cause → solution → warning, tagged with machine, process, author and date. |
 | **3. Find and learn** | A new employee asks in plain language ("packaging line jams, what do I do?") and gets the answer from real past entries, with who solved it and when. |
-| **4. Spot patterns** | The dashboard flags repeats and risks: "Spindle noise at CNC 3: 4x this month", "Only Herr Müller has solved Press 2 problems, and he retires in 6 months." |
+| **4. Spot patterns** | The dashboard flags repeats and risks: "Packaging Machine: jam problem 4 times in the last 30 days", "Only Herr Müller has solved problems on Packaging Machine (retires in 6 months)." |
+| **5. Practise** | The **Fix-it Challenge** turns approved cards into a short game for new employees: a situation, 4 choices, what happens with each, and the expert's real tip. |
 
 ## Features
 
@@ -55,7 +56,9 @@ flowchart LR
 - ⚠️ **Mistake library.** Cards can record "what went wrong", not only "what worked".
 - 🗣️ **Meeting recording.** Recording starts only after everyone consents. It pulls out decisions with their reasons, problems and solutions, lessons, and action items with owners. Lasting points become cards.
 - 🗺️ **Knowledge-risk map.** Shows which machines depend on one person who retires soon.
-- 🌍 **Language bridge.** Ask in any language and get the answer in that language, built from German expert entries.
+- 🌍 **Language bridge.** Record in German or English (auto-detected). Ask in any language and get the answer in that language.
+- 🎮 **Fix-it Challenge.** A training game built from approved cards: situation → big answer buttons → what happens → the expert's approved tip, word for word → a badge. Nothing about the player is stored.
+- 🛡️ **No made-up knowledge.** Silent or empty recordings are rejected instead of turned into cards. Answers come only from approved cards and always name the source. The AI never speaks as the expert.
 
 **Roadmap (in the pitch, not in the demo):** video capture for hands-on fixes · reading existing manuals first · event-triggered questions from machine/MES faults · contradiction check between experts · learning levels and quizzes for new hires · promoting good fixes to the official process, with version history.
 
@@ -67,14 +70,22 @@ flowchart LR
 - Meetings cannot be recorded without `consent=true` from everyone (the API returns `400` without it). Recording a conversation without consent is illegal in Germany.
 - Every card carries the expert's name. **Credit, not control:** it is their legacy.
 
-## Demo story (2 minutes)
+## Demo script (2 minutes)
 
-1. **"Herr Müller"** (32 years, retires in 6 months) records a shift note by voice, and a clean card appears. He approves it.
-2. **Dashboard:** "Spindle noise at CNC 3: 4x this month" and "Only Herr Müller has solved problems on Press 2 (retires in 6 months)".
-3. **"Ahmed"** (1 year in) asks: *"CNC 3 makes a noise when starting, what do I do?"* He gets Müller's steps, each with its source.
-4. **The jury scans the QR code** on a printed "CNC 3" sign with their own phones and sees Müller's approved fix.
-5. *Optional:* a 30-second team meeting turns into decisions and lessons.
-6. **Close:** *"Herr Müller retires in 6 months. His answers stay."*
+Start the server, open the app on the laptop (for the mic), and run **Dashboard → ↺ Reset demo data** once before you go on stage.
+
+| Time | Click | Say |
+|---|---|---|
+| 0:00 | **Record** tab · person = *Herr Müller* · machine = *Packaging Machine* · tap 🎙️ | "Meet Herr Müller. 32 years here. Every Monday morning the Packaging Machine jams, and he's the only one who knows why. He retires in 6 months." |
+| 0:10 | Talk ~20 s: *"Monday morning, the film jammed again. The hall was cold over the weekend, so the film gets stiff. I let it warm up 10 minutes at low speed, then checked the film roll tension."* · tap **✓ Done** | "At the end of his shift he just talks. No typing." |
+| 0:35 | The card slides in (problem · cause · solution · watch out) · tap **✓ Approve** | "The AI writes the card. He checks it and approves it. The recording is deleted. Only his approved words stay." |
+| 0:50 | **Dashboard** | "KnowFlow spots it: jam problem 4 times this month, and only Herr Müller knows the fix." |
+| 1:00 | Hold up the printed **Packaging Machine** QR sign · jury scans it | "Ahmed started last month. The machine jams. He scans the QR code on the machine…" |
+| 1:15 | Machine page: Müller's tip with *Approved by Herr Müller* · tap **👍 Worked** | "…and gets Herr Müller's fix, with his name on it. It worked, so he taps Worked. Proven fixes rise to the top." |
+| 1:30 | **🎮 Fix-it Challenge** · pick the right answer → *Herr Müller's approved tip* → 🏅 badge | "New people practise on real cases from their own factory, not a generic course." |
+| 1:50 | — | "Herr Müller retires in 6 months. His answers stay. **KnowFlow.**" |
+
+**Backup:** if Wi-Fi or the AI fails, the app falls back to built-in rules automatically, and there is a recorded video of the whole flow. Ask the team for `KnowFlow-backup-demo.mp4`.
 
 The seed data is built around this story. Run `POST /admin/reset-demo` between rehearsals to reset it.
 
@@ -105,13 +116,13 @@ WRATHOFCODE-START-A-THON/
 │   │   ├── alerts.py    # pattern alerts + knowledge-risk map (plain rules)
 │   │   ├── db.py        # SQLite schema + helpers
 │   │   └── seed.py      # demo experts + 15 shift entries
-│   ├── tests/test_api.py  # end-to-end test of the whole demo story
+│   ├── tests/test_api.py  # 15 tests covering the whole demo story
 │   ├── requirements.txt
 │   └── .env.example
 └── frontend/            # the app (served at /)
     ├── index.html
     ├── styles.css
-    └── app.js           # screens: Record · Ask · Meetings · Dashboard · QR machine page · printable sign
+    └── app.js           # screens: Record · Ask · Meetings · Dashboard · QR machine page · sign · Fix-it Challenge
 ```
 
 ### Run it locally
@@ -144,6 +155,19 @@ Open **http://localhost:8000** for the app and **http://localhost:8000/docs** fo
 
 Tap the name in the top-right to switch person (e.g. Herr Müller → Ahmed) during the demo.
 
+### Put it online (so the jury's phones can scan the QR codes)
+
+**Fastest, about 1 minute, from the laptop that runs the server:**
+
+```bash
+brew install cloudflared                        # once
+cloudflared tunnel --url http://localhost:8000  # prints https://<random>.trycloudflare.com
+```
+
+Then restart the server with `KNOWFLOW_PUBLIC_URL=https://<random>.trycloudflare.com` in `backend/.env`, and print the signs from **Dashboard → QR codes**. The link stays the same only while that command runs, so print the signs after starting it. HTTPS also makes the microphone work on phones.
+
+**Proper hosting, about 5 minutes, on Render (free):** in Render, choose **New + → Blueprint**, pick this repo (it reads [`render.yaml`](render.yaml)), and set `OPENAI_API_KEY` in the service's *Environment* tab. Then set `KNOWFLOW_PUBLIC_URL` to the `https://knowflow-….onrender.com` address. The free plan sleeps after 15 minutes without traffic, so open the page once just before the pitch.
+
 Run the tests (offline, no key needed):
 
 ```bash
@@ -167,7 +191,7 @@ python -m pytest -q
 |---|---|---|---|
 | `POST` | `/entries` | form: `author`, `machine?`, `text` **or** `audio` file, `language?` | transcript + draft card |
 | `POST` | `/entries/text` | JSON `{author, text, machine?}` | same, for browser speech recognition |
-| `GET` | `/entries` | `?machine=cnc-3&status=approved` | list of cards |
+| `GET` | `/entries` | `?machine=packaging-machine&status=approved` | list of cards |
 | `GET` · `PATCH` · `DELETE` | `/cards/{id}` | `PATCH`: fields to correct | one card / edited card / deleted draft |
 | `POST` | `/cards/{id}/approve` | `{expert}` | card goes live; audio deleted |
 | `POST` | `/cards/{id}/feedback` | `{worked: true\|false}` | updated confidence + last confirmed date |
@@ -180,6 +204,7 @@ python -m pytest -q
 | `GET` | `/alerts` | – | recurring problems, knowledge risks, disputed fixes |
 | `GET` | `/risk-map` | – | per machine: who knows it, who retires soon, risk level |
 | `GET` | `/stats` | – | headline numbers for the dashboard |
+| `POST` | `/challenge` | `{machine?, card_id?, exclude?}` | Fix-it Challenge: situation, 4 shuffled options (`correct`, `consequence`), `explanation`, `badge`, plus the expert's real tip from the card |
 | `POST` | `/meetings` | form: `title`, `participants`, `consent=true`, `text` **or** `audio` | decisions, problems, lessons, action items + new draft cards |
 | `GET` | `/meetings` | – | past meetings |
 | `GET` | `/health` | – | whether the AI and speech-to-text are on |
@@ -194,14 +219,14 @@ python -m pytest -q
   "date": "2026-11-24T14:30:00+00:00",
   "author": "Herr Müller",
   "author_years_experience": 32,
-  "machine": "CNC 3",            "machine_id": "cnc-3",
-  "process": "Milling",
+  "machine": "Packaging Machine", "machine_id": "packaging-machine",
+  "process": "Packing",
   "kind": "fix",                 // fix | mistake | decision | lesson
-  "problem": "Spindle noise on Monday morning, third time this month.",
-  "cause": "Probably the weekend heating is switched off in hall B.",
-  "solution": "Warm-up as usual. Told maintenance to keep the heating on at weekends.",
-  "warning": "If it is noisy after warm-up, stop the machine: bearing damage is expensive.",
-  "tags": ["spindle", "noise", "heating"],
+  "problem": "Film jams at the start on Monday morning.",
+  "cause": "The hall is cold over the weekend, so the film gets stiff.",
+  "solution": "Let it warm up for 10 minutes at low speed. Then check the film roll tension.",
+  "warning": "Don't start at full speed when the machine is cold.",
+  "tags": ["jam", "monday", "cold"],
   "source": "shift",             // shift | meeting
   "status": "approved",          // draft | approved
   "approved_by": "Herr Müller",  "approved_at": "…",
