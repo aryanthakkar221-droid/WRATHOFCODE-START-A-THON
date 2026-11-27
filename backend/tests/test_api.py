@@ -4,7 +4,7 @@ import tempfile
 
 os.environ["KNOWFLOW_DATA_DIR"] = tempfile.mkdtemp()
 os.environ["KNOWFLOW_DB"] = os.path.join(os.environ["KNOWFLOW_DATA_DIR"], "test.db")
-os.environ.pop("OPENAI_API_KEY", None)
+os.environ["OPENAI_API_KEY"] = ""  # stay offline even if .env has a key (dotenv never overrides)
 
 from fastapi.testclient import TestClient  # noqa: E402
 

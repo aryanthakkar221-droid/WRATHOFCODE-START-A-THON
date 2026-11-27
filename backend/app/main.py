@@ -119,7 +119,9 @@ async def create_entry(
     """Log a shift: voice (audio file) or text. The AI turns it into a draft knowledge card
     that the expert approves before it goes live."""
     transcript, audio_path = await _text_from(text, audio, language)
-    structured = ai.structure_entry(transcript, machine)
+    with db.conn() as c:
+        known = [r[0] for r in c.execute("SELECT DISTINCT machine FROM cards WHERE machine IS NOT NULL").fetchall()]
+    structured = ai.structure_entry(transcript, machine, known)
     with db.conn() as c:
         card_id = db.insert_card(c, {
             "author": author,

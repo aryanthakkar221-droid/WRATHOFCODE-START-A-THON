@@ -63,7 +63,10 @@ STRUCTURE_SYSTEM = (
     "'why'). If something is not mentioned, use null. Do not invent facts. Write in clear, "
     "short sentences, in the same language the worker used. kind is 'mistake' if the report "
     "is mainly about something that went wrong and should not be repeated, otherwise 'fix'. "
-    "tags are 1-4 short lowercase keywords for the problem type (e.g. 'spindle', 'noise')."
+    "tags are 1-4 short lowercase English keywords for the problem type (e.g. 'spindle', "
+    "'noise'), always English so patterns match across languages. If the machine matches one "
+    "of the known machines (also when said in another language, e.g. 'Verpackungslinie' = "
+    "'Packaging line'), use that exact known name."
 )
 
 CARD_SCHEMA = {
@@ -83,8 +86,11 @@ CARD_SCHEMA = {
 }
 
 
-def structure_entry(transcript: str, machine_hint: Optional[str] = None) -> Dict[str, Any]:
+def structure_entry(transcript: str, machine_hint: Optional[str] = None,
+                    known_machines: Optional[List[str]] = None) -> Dict[str, Any]:
     user = transcript if not machine_hint else "Machine: %s\n\n%s" % (machine_hint, transcript)
+    if known_machines and not machine_hint:
+        user = "Known machines: %s\n\nShift report:\n%s" % (", ".join(known_machines), user)
     out = _call_json(STRUCTURE_SYSTEM, user, CARD_SCHEMA, "card")
     if out is None:
         out = _offline_structure(transcript)
@@ -168,6 +174,10 @@ def answer_question(question: str, cards: List[Dict[str, Any]]) -> Dict[str, Any
         if out is not None:
             valid = {c["id"] for c in cards}
             out["steps"] = [s for s in out["steps"] if s["card_id"] in valid]
+            if not out["steps"]:
+                out["answered"] = False
+            if not out["answered"] and not out["summary"].strip():
+                out["summary"] = NO_ANSWER
             return out
     return _offline_answer(question, cards)
 
@@ -195,13 +205,16 @@ def rank_cards(question: str, cards: List[Dict[str, Any]]) -> List[Dict[str, Any
     return [c for _, c in scored]
 
 
+NO_ANSWER = "No entry answers this yet. It was added to the open questions for the experts."
+
+
 def _offline_answer(question: str, cards: List[Dict[str, Any]]) -> Dict[str, Any]:
     hits = [c for c in rank_cards(question, cards) if c.get("solution")][:3]
     if not hits:
         authors = [c["author"] for c in cards]
         return {
             "answered": False,
-            "summary": "No entry answers this yet. It was added to the open questions for the experts.",
+            "summary": NO_ANSWER,
             "steps": [],
             "warning": None,
             "suggest_ask": max(set(authors), key=authors.count) if authors else None,
