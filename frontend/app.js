@@ -313,9 +313,11 @@ const store = {
       <form method="dialog" class="row" style="margin-top:12px">
         <input type="text" id="newName" placeholder="Or type your name" class="grow" style="flex:1">
         <button class="btn primary" value="new">OK</button>
-      </form>`;
+      </form>
+      <a class="btn ghost block" href="#/login" id="signOut" style="margin-top:8px">${ic("log-out")}Sign out</a>`;
     modal.showModal();
     modal.querySelectorAll("[data-name]").forEach((b) => b.addEventListener("click", () => { setUser(b.dataset.name); modal.close(); }));
+    document.getElementById("signOut").addEventListener("click", () => { store.set("signed_in", ""); modal.close(); });
     modal.onclose = () => {
       const v = (modal.querySelector("#newName") || {}).value;
       if (modal.returnValue === "new" && v && v.trim()) setUser(v.trim());
@@ -1007,17 +1009,127 @@ const store = {
     });
   }
 
+  // ------------------------------------------------------------ screen: login (demo)
+  // Demo sign-in to show the login flow. No real accounts or passwords are stored:
+  // the email picks the person, any password works.
+  const emailFor = (name) => slug(String(name).replace(/^(Herr|Frau)\s+/i, "")).replace(/-/g, ".") + "@knowflow.demo";
+  let mapAnim = null;
+
+  function screenLogin() {
+    const people = state.experts.length ? state.experts : [{ name: "Herr Müller" }, { name: "Ahmed" }];
+    render(`
+      <div class="login">
+        <section class="login-card">
+          <div class="login-art" aria-hidden="true">
+            <canvas id="dotmap"></canvas>
+            <div class="login-art-text">
+              <span class="login-mark">${ic("arrow-right", "lg")}</span>
+              <h2>KnowFlow</h2>
+              <p>Sign in to share what you fixed today and find what your colleagues already know.</p>
+            </div>
+          </div>
+          <div class="login-form">
+            <div class="eyebrow">KnowFlow · Shift log</div>
+            <h1>Welcome back</h1>
+            <p class="sub">Sign in to your account</p>
+            <form id="loginForm" class="stack" novalidate>
+              <div>
+                <label class="field" for="lemail">Email</label>
+                <div class="input-ico">${ic("mail")}<input type="email" id="lemail" autocomplete="username" placeholder="Enter your email address" required></div>
+              </div>
+              <div>
+                <label class="field" for="lpass">Password</label>
+                <div class="input-ico">${ic("lock")}<input type="password" id="lpass" autocomplete="current-password" placeholder="Enter your password" required>
+                  <button type="button" class="eye" id="leye" aria-label="Show password">${ic("eye")}</button></div>
+              </div>
+              <p class="login-err" id="lerr" role="alert" hidden></p>
+              <button class="btn primary block" id="lsubmit" type="submit">Sign in${ic("arrow-right")}</button>
+            </form>
+            <div class="login-or"><span>Demo accounts</span></div>
+            <div class="chips">${people.map((x) => `<button type="button" class="chip" data-login="${esc(x.name)}">${avatar(x.name, "sm")}&nbsp;${esc(x.name)}</button>`).join("")}</div>
+            <p class="small muted" style="margin-top:14px">Demo only: no real accounts yet. Any password works.</p>
+          </div>
+        </section>
+      </div>`);
+    const email = document.getElementById("lemail"), pass = document.getElementById("lpass"), err = document.getElementById("lerr");
+    document.getElementById("leye").addEventListener("click", (e) => {
+      const show = pass.type === "password";
+      pass.type = show ? "text" : "password";
+      e.currentTarget.innerHTML = ic(show ? "eye-off" : "eye");
+      e.currentTarget.setAttribute("aria-label", show ? "Hide password" : "Show password");
+    });
+    view.querySelectorAll("[data-login]").forEach((b) => b.addEventListener("click", () => {
+      email.value = emailFor(b.dataset.login); pass.value = "demo"; err.hidden = true;
+    }));
+    document.getElementById("loginForm").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const who = people.find((x) => emailFor(x.name) === email.value.trim().toLowerCase());
+      err.hidden = false;
+      if (!who) { err.textContent = "No account with this email. Pick a demo account below."; return email.focus(); }
+      if (!pass.value) { err.textContent = "Enter your password."; return pass.focus(); }
+      err.hidden = true;
+      store.set("signed_in", "1");
+      state.user = who.name; store.set("user", who.name); state.balance = null;
+      renderWho(); refreshBalance();
+      toast("Signed in as " + who.name, "check");
+      location.hash = "#/record";
+    });
+    startDotMap(document.getElementById("dotmap"));
+  }
+
+  // Animated dot field with "knowledge routes" between colleagues (canvas, no library).
+  function startDotMap(canvas) {
+    if (mapAnim) cancelAnimationFrame(mapAnim);
+    if (!canvas || !canvas.parentElement.offsetWidth) return;
+    const ctx = canvas.getContext("2d");
+    const dpr = window.devicePixelRatio || 1;
+    const W = canvas.parentElement.offsetWidth, H = canvas.parentElement.offsetHeight;
+    canvas.width = W * dpr; canvas.height = H * dpr; canvas.style.width = W + "px"; canvas.style.height = H + "px";
+    ctx.scale(dpr, dpr);
+    const dots = [];
+    for (let x = 8; x < W; x += 14) for (let y = 8; y < H; y += 14) {
+      const d = Math.hypot((x - W / 2) / W, (y - H / 2) / H);
+      if (Math.random() > 0.25 && d < 0.62) dots.push({ x, y, o: (0.75 - d) * (Math.random() * 0.5 + 0.35) });
+    }
+    const P = (fx, fy) => ({ x: W * fx, y: H * fy });
+    const routes = [[P(.22, .25), P(.62, .18), 0], [P(.62, .18), P(.8, .5), 2], [P(.15, .62), P(.5, .78), 1], [P(.82, .3), P(.4, .55), .5], [P(.4, .55), P(.2, .4), 3]];
+    const still = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let t0 = performance.now();
+    const frame = (now) => {
+      if (!document.body.contains(canvas)) return;
+      const t = still ? 99 : (now - t0) / 1000;
+      ctx.clearRect(0, 0, W, H);
+      for (const d of dots) { ctx.beginPath(); ctx.arc(d.x, d.y, 1.1, 0, 7); ctx.fillStyle = `rgba(123,63,228,${d.o})`; ctx.fill(); }
+      for (const [a, b, delay] of routes) {
+        const k = Math.max(0, Math.min((t - delay) / 3, 1));
+        if (!k) continue;
+        const x = a.x + (b.x - a.x) * k, y = a.y + (b.y - a.y) * k;
+        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(x, y); ctx.strokeStyle = "rgba(123,63,228,.8)"; ctx.lineWidth = 1.5; ctx.stroke();
+        for (const [px, py, rad, col] of [[a.x, a.y, 3, "#7B3FE4"], [x, y, 7, "rgba(192,75,224,.3)"], [x, y, 3, "#C04BE0"]]) {
+          ctx.beginPath(); ctx.arc(px, py, rad, 0, 7); ctx.fillStyle = col; ctx.fill();
+        }
+        if (k === 1) { ctx.beginPath(); ctx.arc(b.x, b.y, 3, 0, 7); ctx.fillStyle = "#7B3FE4"; ctx.fill(); }
+      }
+      if (t > 14) t0 = now;
+      if (!still) mapAnim = requestAnimationFrame(frame);
+    };
+    mapAnim = requestAnimationFrame(frame);
+  }
+
   // ------------------------------------------------------------ router
   function route() {
     if (activeRecorder) { activeRecorder.cancel(); activeRecorder = null; }
     const [, name, arg] = (location.hash || "#/record").split("/");
     document.querySelectorAll("#tabs a").forEach((a) => a.classList.toggle("active", a.dataset.tab === name));
+    document.body.classList.toggle("login-mode", name === "login");
+    if (name !== "login" && mapAnim) { cancelAnimationFrame(mapAnim); mapAnim = null; }
     window.scrollTo(0, 0);
     switch (name) {
       case "ask": return screenAsk(arg ? decodeURIComponent(arg) : "");
       case "meetings": return screenMeetings();
       case "dashboard": return screenDashboard();
       case "wallet": return screenWallet();
+      case "login": return screenLogin();
       case "m": return screenMachine(decodeURIComponent(arg || ""));
       case "sign": return screenSign(decodeURIComponent(arg || ""));
       case "card": return screenCard(arg);
