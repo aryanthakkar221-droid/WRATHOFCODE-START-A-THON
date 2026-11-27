@@ -371,6 +371,38 @@ class Ask(BaseModel):
     history: List[ChatTurn] = []   # this browser session only; never stored or analysed
 
 
+def _person_context(person: Optional[str]) -> Dict[str, Any]:
+    """Real app facts for the general chat (read from the database, never guessed, never stored)."""
+    if not person:
+        return {}
+    with db.conn() as c:
+        me = c.execute("SELECT years_experience FROM experts WHERE name=?", (person,)).fetchone()
+        w = tokens.wallet(c, person)
+        own = [{"title": d["problem"], "machine": d["machine"]} for d in db.list_cards(c, None, "draft")
+               if d["author"] == person]
+        known = {r["machine_id"] for r in c.execute(
+            "SELECT DISTINCT machine_id FROM cards WHERE author=? AND status='approved'", (person,)).fetchall()}
+        oq = [{"text": r["question"], "machine_id": r["machine_id"]} for r in c.execute(
+            "SELECT question, machine_id FROM open_questions WHERE resolved_card_id IS NULL ORDER BY date DESC").fetchall()
+            if r["machine_id"] in known]
+    is_exp = bool(me) and (me["years_experience"] or 0) >= db.EXPERT_YEARS
+    inbox = review_inbox(person, suggest=False) if is_exp else {"drafts": []}
+    ev = w["events"][0] if w["events"] else None
+    return {
+        "is_expert": is_exp,
+        "drafts_for_you_to_approve": [{"title": d["problem"], "machine": d["machine"]} for d in inbox["drafts"]
+                                      if d["author"] != person or is_exp],
+        "open_questions_on_your_machines": oq,
+        "tokens": {"balance": w["balance"], "last_earning": {"amount": ev["amount"], "reason": ev["reason"]} if ev else None},
+        "your_drafts_waiting_for_an_expert": own if not is_exp else [],
+    }
+
+
+def _general(body) -> Dict[str, Any]:
+    g = ai.general_answer(body.question, body.asked_by, _person_context(body.asked_by), first=not body.history)
+    return {"summary": g["answer"], "link": g["link"]}
+
+
 @app.post("/ask", tags=["ask"])
 def ask(body: Ask) -> Dict[str, Any]:
     """A new employee asks in plain language (any language). The answer is built only from
@@ -384,7 +416,7 @@ def ask(body: Ask) -> Dict[str, Any]:
         # small talk / general question: labelled general answer, no card search, never to the experts,
         # nothing stored
         return {"answered": False, "general": True, "question": body.question, "asked": asked, "steps": [], "sources": [],
-                "summary": ai.general_answer(body.question, body.asked_by), "warning": None}
+                "warning": None, **_general(body)}
     with db.conn() as c:
         cards = db.list_cards(c, mid, "approved")
         candidates = ai.rank_cards(body.question, cards)[:25] or cards[:25]

@@ -689,8 +689,10 @@ const store = {
   function answerHTML(r) {
     if (r.error) return `<div class="answer none">${esc(r.error)}</div>`;
     if (r.general) {
+      const link = { dashboard: ["#/dashboard", "Open Dashboard", "layout-dashboard"], wallet: ["#/wallet", "Open Wallet", "wallet"] }[r.link];
       return `<div class="answer general"><div class="eyebrow">${ic("message-square")}General AI answer · not checked by your experts</div>
-        <p class="answer-summary">${esc(r.summary)}</p></div>`;
+        <p class="answer-summary">${esc(r.summary)}</p>
+        ${link ? `<a class="btn small" href="${link[0]}">${ic(link[2])}${link[1]}</a>` : ""}</div>`;
     }
     if (!r.answered) {
       return `<div class="answer none">

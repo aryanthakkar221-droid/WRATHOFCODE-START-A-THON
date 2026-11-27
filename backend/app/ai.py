@@ -149,24 +149,71 @@ def review_suggestions(facts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return res
 
 
-def general_answer(question: str, person: Optional[str]) -> str:
-    """Friendly, short general chat answer. Never machine repair steps. Not stored anywhere."""
+_APP_Q = re.compile(r"approv|review|draft|token|wallet|balance|earn|question|task|to ?do|for me|freigabe|offen|aufgabe", re.I)
+
+
+def _context_answer(question: str, ctx: Dict[str, Any]) -> Optional[Dict[str, str]]:
+    """Offline: answer app questions only from the real context."""
+    q = question.lower()
+    if re.search(r"approv|review|draft|freigabe", q):
+        d = ctx.get("drafts_for_you_to_approve") or []
+        if not ctx.get("is_expert"):
+            own = ctx.get("your_drafts_waiting_for_an_expert") or []
+            return {"answer": "Only experts approve cards. %s" % (
+                "You have %d card waiting for an expert: '%s'." % (len(own), own[0]["title"]) if own else "You have no cards waiting."),
+                "link": "dashboard" if own else "none"}
+        if not d:
+            return {"answer": "Nothing is waiting for your approval right now.", "link": "none"}
+        return {"answer": "You have %d card%s waiting for approval: %s." % (len(d), "" if len(d) == 1 else "s",
+                ", ".join("'%s' (%s)" % (x["title"], x["machine"]) for x in d[:3])), "link": "dashboard"}
+    if re.search(r"token|wallet|balance|earn", q):
+        t = ctx.get("tokens") or {}
+        last = t.get("last_earning")
+        return {"answer": "You have %s tokens.%s" % (t.get("balance", 0), (" Last: +%d, %s." % (last["amount"], last["reason"])) if last else ""),
+                "link": "wallet"}
+    if re.search(r"question|offen", q):
+        oq = ctx.get("open_questions_on_your_machines") or []
+        return {"answer": ("%d open question%s on your machines, e.g. '%s'." % (len(oq), "" if len(oq) == 1 else "s", oq[0]["text"])) if oq
+                else "No open questions on your machines.", "link": "dashboard" if oq else "none"}
+    return None
+
+
+def general_answer(question: str, person: Optional[str], context: Optional[Dict[str, Any]] = None,
+                   first: bool = True) -> Dict[str, str]:
+    """Friendly, short general chat answer. Never repair steps, never guesses about the app:
+    approvals, questions, tokens and tasks come only from `context` (read from the database).
+    Greets by name only in the first reply of a chat session. Nothing is stored."""
     name = (person or "").strip()
+    ctx = context or {}
     out = _call_json(
-        "You are KnowFlow's friendly assistant in a factory app. Answer the message naturally and briefly "
-        "(1-3 short sentences), like a normal chat assistant. Address the person by name once if a name is "
-        "given. You may explain general concepts in plain words. NEVER give machine repair, troubleshooting "
-        "or step-by-step fix instructions: for those, say the person should ask the concrete problem so "
-        "KnowFlow can answer from the experts' approved cards. Never pretend to be one of the experts.",
-        ("Person: %s\n" % name if name else "") + "Message: " + question,
-        {"type": "object", "additionalProperties": False, "required": ["answer"],
-         "properties": {"answer": {"type": "string"}}}, "general")
+        "You are KnowFlow's friendly assistant in a factory app. Answer briefly (1-3 short sentences), like a "
+        "normal chat assistant. "
+        + ("Greet the person by name once. " if first and name else
+           "Do NOT greet and do NOT use the person's name; answer directly. ")
+        + "You may explain general concepts in plain words. NEVER give machine repair, troubleshooting or "
+        "step-by-step fix instructions: for those, say to ask the concrete problem so KnowFlow can answer from "
+        "the experts' approved cards. Never pretend to be one of the experts.\n"
+        "APP FACTS: answer anything about approvals, drafts, open questions, tokens or the person's tasks ONLY "
+        "from the CONTEXT JSON. Mention items with counts and titles, e.g. \"You have 1 card waiting for "
+        "approval: 'The door does not open after the program ends' (Machine 1).\" If the context does not "
+        "contain the answer, say exactly: \"I can't see that. Check the Dashboard.\" Never claim that "
+        "everything is fine or running smoothly. Set link to 'dashboard' for approvals/questions/tasks with "
+        "items, 'wallet' for tokens, else 'none'.",
+        "CONTEXT: %s\nPerson: %s\nMessage: %s" % (json.dumps(ctx, ensure_ascii=False), name or "unknown", question),
+        {"type": "object", "additionalProperties": False, "required": ["answer", "link"],
+         "properties": {"answer": {"type": "string"}, "link": {"type": "string", "enum": ["dashboard", "wallet", "none"]}}},
+        "general")
     if out and out.get("answer", "").strip():
-        return out["answer"].strip()
-    hi = ("Hi %s! " % name) if name else "Hi! "
+        return {"answer": out["answer"].strip(), "link": out.get("link", "none")}
+    if _APP_Q.search(question):
+        got = _context_answer(question, ctx)
+        if got:
+            return got
+        return {"answer": "I can't see that. Check the Dashboard.", "link": "dashboard"}
+    hi = ("Hi %s! " % name) if (first and name) else ""
     if re.match(r"^\s*(hey|hi|hello|hallo|moin|servus|good)", question, re.I):
-        return hi + "How can I help? Ask me about a machine problem and I'll answer from your experts' approved cards."
-    return hi + "That's a general question. For a concrete machine problem, describe what happens and I'll answer from the approved cards."
+        return {"answer": (hi or "Hi! ") + "How can I help? Ask me about a machine problem and I'll answer from your experts' approved cards.", "link": "none"}
+    return {"answer": hi + "That's a general question. For a concrete machine problem, describe what happens and I'll answer from the approved cards.", "link": "none"}
 
 
 def _nullable(t: str) -> Dict[str, Any]:
