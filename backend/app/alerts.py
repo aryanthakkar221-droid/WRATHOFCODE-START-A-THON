@@ -88,9 +88,8 @@ def risk_map(cards: List[Dict[str, Any]], experts: Dict[str, Dict[str, Any]]) ->
     rows = []
     for mid, group in _solved_by_machine(cards).items():
         authors = sorted({c["author"] for c in group})
-        retiring = [a for a in authors if (experts.get(a) or {}).get("status")
-                    or ((experts.get(a) or {}).get("retires_in_months") is not None
-                        and experts[a]["retires_in_months"] <= 12)]
+        retiring = [a for a in authors if (experts.get(a) or {}).get("retires_in_months") is not None
+                    and experts[a]["retires_in_months"] <= 12]
         safe = [a for a in authors if a not in retiring]
         level = "high" if len(safe) == 0 else "medium" if len(safe) == 1 else "low"
         rows.append({

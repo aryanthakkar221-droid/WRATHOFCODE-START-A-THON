@@ -206,12 +206,10 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline: non
 .badge.bad, .badge.mistake { background: var(--danger-soft); color: var(--danger); }
 .badge.meeting { background: var(--violet-soft); color: var(--violet-ink); }
 .badge.shared { background: var(--violet-soft); color: var(--violet-ink); white-space: normal; }
-.badge.retired { background: var(--black); color: #fff; white-space: normal; margin: 6px 0 4px; }
 .count {
   display: inline-grid; place-items: center; min-width: 26px; height: 26px; padding: 0 8px; border-radius: 999px;
   background: var(--black); color: #fff; font-family: var(--mono); font-size: 12px; font-weight: 500;
 }
-.tag-retired { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; background: var(--black); color: #fff; border-radius: 999px; padding: 3px 8px; vertical-align: 2px; margin-left: 4px; }
 
 /* ---------- record ---------- */
 .record-hero { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 8px 0 4px; }

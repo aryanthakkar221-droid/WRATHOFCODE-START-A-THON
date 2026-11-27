@@ -1,4 +1,4 @@
-"""Demo data: 5 experts, 15 approved cards + 1 draft on 4 machines, in simple words.
+"""Demo data: 4 people, 15 approved cards + 1 draft on 4 machines, in simple words.
 
 Main story, Packaging Machine: it jams every Monday morning. Only Herr Müller (32 years,
 retires in 6 months) knows the fix: warm it up 10 minutes at low speed (the film gets
@@ -6,20 +6,19 @@ stiff when the hall is cold over the weekend), then check the film roll tension.
 - 3 "jam" entries this month -> "Keeps happening" alert. The live demo recording makes it 4.
 - Packaging Machine and Press 2 only ever fixed by Herr Müller -> "Only one person knows".
 - One fix on Machine 1 often didn't work -> warning flag.
-- One draft from Ahmed waits for approval; one open question waits for Herr Weber.
+- One draft from Ahmed waits for approval; one open question about the compressor waits for an expert.
 Dates are relative to today, so "this month" stays true whenever you run it.
 """
 from datetime import datetime, timedelta, timezone
 
 from . import db
 
-# (name, years of experience, retires in N months, status, available for calls)
+# (name, years of experience, retires in N months)
 EXPERTS = [
-    ("Herr Müller", 32, 6, None, None),
-    ("Frau Schneider", 18, None, None, None),
-    ("Herr Weber", 38, None, "retired 2025", "Thursdays"),
-    ("Ahmed", 1, None, None, None),
-    ("Lena Kowalski", 7, None, None, None),
+    ("Herr Müller", 32, 6),
+    ("Frau Schneider", 18, None),
+    ("Ahmed", 1, None),
+    ("Lena Kowalski", 7, None),
 ]
 
 
@@ -105,38 +104,23 @@ ENTRIES = [
      "Wrong parts look fine at first glance. Check them with the gauge.",
      ["jam", "strip"], 2, 0, "approved"),
 
-    # ---- Herr Weber (retired 2025): his know-how still helps
-    (40, "Herr Weber", "Press 2", "Pressing", "fix",
-     "Parts are not accurate. The size changes during the shift.",
-     "The press gets warm, so the tool grows a little.",
-     "Check a part with the gauge every hour. If it drifts, move the stop back by one mark.",
-     "Don't change the setting while the press is running.",
-     ["size", "accuracy", "warm"], 6, 0, "approved"),
-    (70, "Herr Weber", "Press 2", "Pressing", "fix",
-     "The press makes a loud knock on every stroke.",
-     "The tool clamp has come a little loose.",
-     "Switch off, lock out, and tighten the four clamp bolts in a cross pattern.",
-     "Never reach into the press without locking it out first.",
-     ["noise", "clamp", "safety"], 4, 0, "approved"),
-
-    # ---- Compressor (Herr Müller retires soon, Herr Weber is retired)
+    # ---- Compressor (Herr Müller and Frau Schneider)
     (33, "Herr Müller", "Compressor", "Compressed air", "fix",
      "Air pressure drops at night.",
      "A leak at a hose connection near Machine 1.",
      "Listen for hissing on a quiet weekend and replace the seal at the connection.",
      None, ["pressure", "leak"], 1, 0, "approved"),
-    (14, "Herr Weber", "Compressor", "Compressed air", "fix",
-     "Compressor gets hot and switches off.",
-     "The air filter is full of dust.",
-     "Clean the air filter every month and replace it every 6 months.",
-     "Let it cool down before you open the cover.",
-     ["heat", "filter"], 3, 0, "approved"),
-    (48, "Herr Weber", "Compressor", "Compressed air", "mistake",
-     "We drained the water tank while it was still under pressure.",
-     "The valve was opened too fast, so water and air sprayed out.",
-     "Switch off and wait until the pressure shows zero before draining.",
-     "Wear safety glasses when draining.",
-     ["water", "safety"], 2, 0, "approved"),
+    (12, "Frau Schneider", "Compressor", "Compressed air", "fix",
+     "Water comes out of the air hoses in the morning.",
+     "Water collects in the tank overnight.",
+     "Open the drain valve under the tank slowly at the start of the early shift until only air comes out.",
+     "Open the valve slowly. Wear safety glasses.",
+     ["water", "drain"], 3, 0, "approved"),
+    (37, "Frau Schneider", "Compressor", "Compressed air", "fix",
+     "The compressor starts and stops every few seconds.",
+     "Air is leaking somewhere, so the pressure keeps dropping.",
+     "Walk the air line and listen for hissing. Tighten or replace the leaking connection.",
+     None, ["pressure", "leak"], 2, 0, "approved"),
 
     # ---- Draft waiting for approval (for the approve demo)
     (1, "Ahmed", "Machine 1", "Cutting", "fix",
@@ -152,7 +136,6 @@ SHIFT_PLAN = [
     ("Herr Müller", "Packaging Machine", "early shift"),
     ("Ahmed", "Press 2", "early shift"),
     ("Frau Schneider", "Machine 1", "late shift"),
-    ("Herr Weber", "Compressor", "early shift"),
     ("Lena Kowalski", "Machine 1", "early shift"),
 ]
 
@@ -165,11 +148,6 @@ TOKENS = [
     (9, "Herr Müller", 5, "Your card was approved: Press restarted without checking the strip"),
     (5, "Herr Müller", 10, "Your fix worked for Frau Schneider"),
     (2, "Herr Müller", 10, "Your fix worked for Ahmed"),
-    (60, "Herr Weber", 5, "Your card was approved: Parts are not accurate"),
-    (25, "Herr Weber", 10, "Your fix worked for Ahmed"),
-    (11, "Herr Weber", 10, "Your fix worked for Lena Kowalski"),
-    (6, "Herr Weber", 10, "Your fix worked for Frau Schneider"),
-    (3, "Herr Weber", 10, "Your fix worked for Ahmed"),
 ]
 
 OPEN_QUESTIONS = [
@@ -191,8 +169,8 @@ def seed(reset: bool = False) -> int:
         elif c.execute("SELECT COUNT(*) FROM cards").fetchone()[0]:
             c.executemany("INSERT OR IGNORE INTO shift_plan VALUES (?,?,?)", SHIFT_PLAN)
             return 0
-        c.executemany("INSERT OR REPLACE INTO experts (name, years_experience, retires_in_months, status, available) "
-                      "VALUES (?,?,?,?,?)", EXPERTS)
+        c.executemany("INSERT OR REPLACE INTO experts (name, years_experience, retires_in_months) "
+                      "VALUES (?,?,?)", EXPERTS)
         c.executemany("INSERT OR REPLACE INTO shift_plan VALUES (?,?,?)", SHIFT_PLAN)
         years = {e[0]: e[1] for e in EXPERTS}
         for (days, author, machine, process, kind, problem, cause, solution, warning, tags,

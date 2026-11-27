@@ -173,7 +173,7 @@ const store = {
       <div class="author">
         ${avatar(c.author)}
         <div class="author-meta grow">
-          <b>${esc(c.author)}</b>${retiredBadge(c.author)}
+          <b>${esc(c.author)}</b>
           <small>${c.author_years_experience ? c.author_years_experience + " years experience · " : ""}${fmtDate(c.date)}${c.last_confirmed ? " · last confirmed " + ago(c.last_confirmed) : ""}</small>
         </div>
         ${c.status === "approved" ? `<div class="worked" title="Worked for ${c.worked_count} ${c.worked_count === 1 ? "person" : "people"}">
@@ -307,7 +307,7 @@ const store = {
       <div class="who-list">
         ${state.experts.map((x) => `
           <button type="button" data-name="${esc(x.name)}" class="${x.name === state.user ? "on" : ""}">
-            ${avatar(x.name)}<span><b>${esc(x.name)}</b>${x.status ? ` <span class="tag-retired">${esc(x.status)}</span>` : ""}<br><small class="muted">${x.years_experience} years experience${x.retires_in_months != null ? " · retires in " + x.retires_in_months + " months" : ""}${x.available ? " · available for calls: " + esc(x.available) : ""}</small>${retiredBadge(x.name)}</span>
+            ${avatar(x.name)}<span><b>${esc(x.name)}</b><br><small class="muted">${x.years_experience} years experience${x.retires_in_months != null ? " · retires in " + x.retires_in_months + " months" : ""}</small></span>
           </button>`).join("")}
       </div>
       <form method="dialog" class="row" style="margin-top:12px">
@@ -321,12 +321,6 @@ const store = {
       if (modal.returnValue === "new" && v && v.trim()) setUser(v.trim());
     };
   });
-  function retiredBadge(name) {
-    const x = (state.experts || []).find((e) => e.name === name);
-    if (!x || !x.status) return "";
-    const yr = (x.status.match(/\d{4}/) || [""])[0];
-    return `<span class="badge retired">Retired ${esc(yr)} · his know-how still helps</span>`;
-  }
   function setUser(name) {
     state.user = name;
     store.set("user", name);

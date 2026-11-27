@@ -20,7 +20,7 @@ def setup_module(_):
 
 def test_health():
     h = client.get("/health").json()
-    assert h["ok"] and h["cards"] == 18
+    assert h["ok"] and h["cards"] == 16
 
 
 def test_alerts_tell_the_demo_story():
@@ -28,6 +28,7 @@ def test_alerts_tell_the_demo_story():
     msgs = " | ".join(a["message"] for a in alerts)
     assert any(a["type"] == "recurring_problem" and a["machine_id"] == "packaging-machine" and a["count"] == 3 for a in alerts), msgs
     assert any(a["type"] == "knowledge_risk" and a["expert"] == "Herr Müller" and a["machine_id"] == "packaging-machine" for a in alerts), msgs
+    assert any(a["type"] == "knowledge_risk" and a["expert"] == "Herr Müller" and a["machine_id"] == "press-2" for a in alerts), msgs
     assert any(a["type"] == "disputed_fix" for a in alerts), msgs
 
 
@@ -92,7 +93,7 @@ def test_audio_without_stt_key_gives_clear_error():
 def test_dashboard_endpoints():
     risk = client.get("/risk-map").json()
     press = next(r for r in risk if r["machine_id"] == "press-2")
-    assert press["risk"] == "high" and press["experts_retiring_soon"] == ["Herr Müller", "Herr Weber"]
+    assert press["risk"] == "high" and press["experts_retiring_soon"] == ["Herr Müller"]
     s = client.get("/stats").json()
     assert s["cards_approved"] >= 15 and s["meetings"] >= 1
     assert client.get("/machines").json()
@@ -120,7 +121,7 @@ def test_silence_transcripts_are_caught():
 
 def test_open_questions_for_expert_puts_their_machines_first():
     client.post("/ask", json={"question": "How do I refill the coffee machine in hall Z?"})
-    qs = client.get("/open-questions", params={"expert": "Herr Weber"}).json()
+    qs = client.get("/open-questions", params={"expert": "Frau Schneider"}).json()
     assert qs[0]["machine_id"] == "compressor"
 
 
@@ -209,13 +210,14 @@ def test_meeting_machine_from_title():
     assert r["cards"] and all(c["machine"] == "Press 2" for c in r["cards"])
 
 
-def test_retired_expert_weber():
-    weber = next(x for x in client.get("/experts").json() if x["name"] == "Herr Weber")
-    assert weber["years_experience"] == 38 and weber["status"] == "retired 2025" and weber["available"] == "Thursdays"
-    mine = [c for c in client.get("/entries", params={"status": "approved"}).json() if c["author"] == "Herr Weber"]
-    assert len(mine) == 4 and all(c["worked_count"] and c["last_confirmed"] for c in mine)
-    r = client.post("/ask", json={"question": "Press 2 parts are not accurate, what do I do?"}).json()
-    assert any(s["author"] == "Herr Weber" for s in r["sources"]), r
+def test_no_retired_expert_in_demo():
+    names = [x["name"] for x in client.get("/experts").json()]
+    assert "Herr Weber" not in names and "Herr Müller" in names
+    mueller = next(x for x in client.get("/experts").json() if x["name"] == "Herr Müller")
+    assert mueller["years_experience"] == 32 and mueller["retires_in_months"] == 6
+    assert "status" not in mueller and "available" not in mueller
+    assert all(c["author"] != "Herr Weber" for c in client.get("/entries").json())
+    assert _bal("Herr Weber")["balance"] == 0
 
 
 def _bal(name):
@@ -242,7 +244,7 @@ def test_tokens_rules():
     no = client.post("/cards/%d/feedback" % card["id"], json={"worked": False, "voter": "Lena Kowalski"}).json()
     assert no["tokens"] is None
     # daily cap 30 (10 already today)
-    for v in ("Frau Schneider", "Herr Weber", "Gast 1", "Gast 2"):
+    for v in ("Frau Schneider", "Gast 0", "Gast 1", "Gast 2"):
         client.post("/cards/%d/feedback" % card["id"], json={"worked": True, "voter": v})
     w = _bal("Herr Müller")
     assert w["today"] == 30 and w["balance"] == 80
@@ -252,5 +254,5 @@ def test_tokens_rules():
     assert _bal("Lena Kowalski")["balance"] == 0
     a = client.post("/cards/%d/approve" % e["id"], json={"expert": "Lena Kowalski"}).json()
     assert a["tokens"]["amount"] == 5 and _bal("Lena Kowalski")["balance"] == 5
-    v = client.post("/wallet/Herr%20Weber/voucher").json()
+    v = client.post("/wallet/Herr%20M%C3%BCller/voucher").json()
     assert v["demo"] and v["code"].startswith("KF-") and "<svg" in v["qr_svg"]

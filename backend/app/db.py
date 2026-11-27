@@ -15,9 +15,7 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS experts (
     name TEXT PRIMARY KEY,
     years_experience INTEGER,
-    retires_in_months INTEGER,
-    status TEXT,                               -- e.g. "retired 2025" (display only)
-    available TEXT                             -- e.g. "Thursdays" (display only)
+    retires_in_months INTEGER
 );
 CREATE TABLE IF NOT EXISTS cards (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -115,10 +113,6 @@ def init() -> None:
         cols = {r[1] for r in c.execute("PRAGMA table_info(cards)").fetchall()}
         if "shared_by" not in cols:  # database created before this column existed
             c.execute("ALTER TABLE cards ADD COLUMN shared_by TEXT")
-        ecols = {r[1] for r in c.execute("PRAGMA table_info(experts)").fetchall()}
-        for col in ("status", "available"):
-            if col not in ecols:
-                c.execute("ALTER TABLE experts ADD COLUMN %s TEXT" % col)
 
 
 def card_row_to_dict(r: sqlite3.Row) -> Dict[str, Any]:
