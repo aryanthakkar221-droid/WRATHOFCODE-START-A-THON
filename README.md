@@ -72,7 +72,7 @@ flowchart LR
 
 ## Demo script (2 minutes)
 
-Start the server, open the app on the laptop (for the mic), and run **Dashboard → ↺ Reset demo data** once before you go on stage.
+The demo runs on one laptop at **http://localhost:8000**. Start the server, open the app, and run **Dashboard → ↺ Reset demo data** once before you go on stage. Have the printed **Packaging Machine** sign ready (also on the slide).
 
 | Time | Click | Say |
 |---|---|---|
@@ -80,7 +80,7 @@ Start the server, open the app on the laptop (for the mic), and run **Dashboard 
 | 0:10 | Talk ~20 s: *"Monday morning, the film jammed again. The hall was cold over the weekend, so the film gets stiff. I let it warm up 10 minutes at low speed, then checked the film roll tension."* · tap **✓ Done** | "At the end of his shift he just talks. No typing." |
 | 0:35 | The card slides in (problem · cause · solution · watch out) · tap **✓ Approve** | "The AI writes the card. He checks it and approves it. The recording is deleted. Only his approved words stay." |
 | 0:50 | **Dashboard** | "KnowFlow spots it: jam problem 4 times this month, and only Herr Müller knows the fix." |
-| 1:00 | Hold up the printed **Packaging Machine** QR sign · jury scans it | "Ahmed started last month. The machine jams. He scans the QR code on the machine…" |
+| 1:00 | Hold up the printed **Packaging Machine** sign · switch person to *Ahmed* · Dashboard → **QR codes → Packaging Machine → Open page** | "In the factory, this sticker is on the machine. Ahmed started last month. The machine jams, so he scans it…" |
 | 1:15 | Machine page: Müller's tip with *Approved by Herr Müller* · tap **👍 Worked** | "…and gets Herr Müller's fix, with his name on it. It worked, so he taps Worked. Proven fixes rise to the top." |
 | 1:30 | **🎮 Fix-it Challenge** · pick the right answer → *Herr Müller's approved tip* → 🏅 badge | "New people practise on real cases from their own factory, not a generic course." |
 | 1:50 | — | "Herr Müller retires in 6 months. His answers stay. **KnowFlow.**" |
