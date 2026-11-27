@@ -27,7 +27,7 @@ An AI-powered Schichtbuch. Every worker logs their shift **by voice in about 2 m
 flowchart LR
     A["🎙️ Record<br/>2-min voice note<br/>at end of shift"] --> B["🧠 Structure<br/>AI writes a card:<br/>problem → cause →<br/>solution → warning"]
     B --> C["✅ Approve<br/>Expert checks it.<br/>Audio is deleted."]
-    C --> D["🔎 Find & learn<br/>New employee asks<br/>in plain language<br/>or scans the QR code"]
+    C --> D["🔎 Find & learn<br/>New employee asks<br/>in plain language"]
     D --> E["👍 Did it work?<br/>Proven fixes rise,<br/>wrong ones get flagged"]
     E -.-> D
     D -- "no answer yet" --> F["❓ Closed loop<br/>Question goes to<br/>the right expert"]
@@ -43,7 +43,7 @@ flowchart LR
 | **3. Find and learn** | A new employee asks in plain language ("packaging line jams, what do I do?") and gets the answer from real past entries, with who solved it and when. |
 | **4. Spot patterns** | The dashboard flags repeats and risks: "Packaging Machine: jam problem 4 times in the last 30 days", "Only Herr Müller has solved problems on Packaging Machine (retires in 6 months)." |
 | **Rewards** | Tokens reward tips that help, not how much you record: +5 when your card is approved, +10 each time a colleague says your fix worked. Nothing for drafts, for "Didn't work" or for rating your own card; one vote per person per card; max 30 a day. 10 tokens = 1 €, up to 50 € a month (tax-free limit). The Wallet shows the balance, this month's progress and a canteen voucher QR (demo only, no real payment). |
-| **5. Practise** | The **Fix-it Challenge** turns approved cards into a short game for new employees: a situation, 4 choices, what happens with each, and the expert's real tip. |
+| **5. Practise** | The **Practice** tab lists **Fix-it Challenges** built from approved cards, grouped by machine, with progress and badges: a situation, 4 choices, what happens with each, and the expert's real tip. |
 
 ## Features
 
@@ -52,7 +52,7 @@ flowchart LR
 - 🎙️ **Voice, not typing.** 2 minutes at the machine, in normal German. Whisper handles the speech-to-text.
 - 🧠 **The AI does the documenting.** Messy talk in, clean structured card out. It never invents facts: missing fields stay empty.
 - ✅ **Expert approves before it goes live.** The AI drafts the card, and the expert can edit, approve or reject it.
-- 📱 **A QR code on every machine.** Scan it to see the experts' approved fixes for exactly that machine, proven ones first.
+- 📱 **A page for every machine.** Its alerts and the experts' approved fixes for exactly that machine, proven ones first (open it from Dashboard → Machines).
 - 👍 **"Did this work?" button.** Cards show their confidence and "last confirmed" date. Fixes that fail more often than they work are flagged as outdated.
 - ❓ **Closed loop.** A question nobody could answer becomes the next question the AI asks the expert who knows that machine.
 - ⚠️ **Mistake library.** Cards can record "what went wrong", not only "what worked".
@@ -74,18 +74,17 @@ flowchart LR
 
 ## Demo script (2 minutes)
 
-The demo runs on one laptop at **http://localhost:8000**. Start the server, open the app, and run **Dashboard → ↺ Reset demo data** once before you go on stage. Have the printed **Packaging Machine** sign ready (also on the slide).
+The demo runs on one laptop at **http://localhost:8000**. Start the server, open the app, and run **Dashboard → ↺ Reset demo data** once before you go on stage. 
 
 | Time | Click | Say |
 |---|---|---|
-| 0:00 | **Record** tab · person = *Herr Müller* · machine = *Packaging Machine* · tap 🎙️ | "Meet Herr Müller. 32 years here. Every Monday morning the Packaging Machine jams, and he's the only one who knows why. He retires in 6 months." |
-| 0:10 | Talk ~20 s: *"Monday morning, the film jammed again. The hall was cold over the weekend, so the film gets stiff. I let it warm up 10 minutes at low speed, then checked the film roll tension."* · tap **✓ Done** | "At the end of his shift he just talks. No typing." |
-| 0:35 | The card slides in (problem · cause · solution · watch out) · tap **✓ Approve** | "The AI writes the card. He checks it and approves it. The recording is deleted. Only his approved words stay." |
-| 0:50 | **Dashboard** | "KnowFlow spots it: jam problem 4 times this month, and only Herr Müller knows the fix." |
-| 1:00 | Hold up the printed **Packaging Machine** sign · switch person to *Ahmed* · Dashboard → **QR codes → Packaging Machine → Open page** | "In the factory, this sticker is on the machine. Ahmed started last month. The machine jams, so he scans it…" |
-| 1:15 | Machine page: Müller's tip with *Approved by Herr Müller* · tap **👍 Worked** | "…and gets Herr Müller's fix, with his name on it. It worked, so he taps Worked. Proven fixes rise to the top." |
-| 1:30 | **🎮 Fix-it Challenge** · pick the right answer → *Herr Müller's approved tip* → 🏅 badge | "New people practise on real cases from their own factory, not a generic course." |
-| 1:50 | — | "Herr Müller retires in 6 months. His answers stay. **KnowFlow.**" |
+| 0:00 | **Record** tab · person = *Herr Müller* · tap the mic | "Meet Herr Müller. 32 years here. Every Monday morning the Packaging Machine jams, and he's the only one who knows why. He retires in 6 months." |
+| 0:10 | Talk ~20 s: *"Monday morning, the film jammed again. The hall was cold over the weekend, so the film gets stiff. I let it warm up 10 minutes at low speed, then checked the film roll tension."* · tap **Done** | "At the end of his shift he just talks. No typing, no forms." |
+| 0:35 | *Detected: Packaging Machine* · the card slides in · tap **Approve** (+5 tokens) | "The AI writes the card and finds the machine. He checks it and approves it. The recording is deleted." |
+| 0:50 | Switch person to *Ahmed* · **Ask** tab · tap *"The Packaging Machine jams on Monday morning. What do I do?"* | "Ahmed started last month. The machine jams, so he asks in his own words…" |
+| 1:05 | Steps *from Herr Müller* · on Müller's card tap **Worked** → *"+10 tokens · Herr Müller · Your fix worked for Ahmed"* | "…and gets Herr Müller's fix, with his name on it. It worked, so Herr Müller is rewarded." |
+| 1:25 | **Practice** tab → Packaging Machine challenge → **Start** → pick the right answer → Herr Müller's approved tip + badge | "New people practise on real cases from their own factory." |
+| 1:45 | Switch to *Herr Müller* · **Wallet** | "Tokens for knowledge that helps, not for talking a lot. Herr Müller retires in 6 months. His answers stay. **KnowFlow.**" |
 
 **Backup:** if Wi-Fi or the AI fails, the app falls back to built-in rules automatically, and there is a recorded video of the whole flow. Ask the team for `KnowFlow-backup-demo.mp4`.
 
@@ -102,7 +101,7 @@ The seed data is built around this story. Run `POST /admin/reset-demo` between r
 | Speech-to-text | **OpenAI Whisper** | Handles German shop-floor speech well |
 | Storage | **SQLite** | One file, zero setup, enough for a pilot |
 | Search | All approved cards plus the question go into one prompt | With 15–500 cards that fits in one prompt, so no vector DB is needed |
-| QR codes | `segno` → SVG | Printable, scales cleanly |
+| QR codes | `segno` → SVG | Canteen voucher, scales cleanly |
 | Frontend | **Plain HTML/CSS/JS**, mobile-first, served by the backend | No build step, one URL for app + API, works on any phone |
 | Voice in the browser | `MediaRecorder` API | Records audio in the browser, no app install |
 
@@ -124,7 +123,7 @@ WRATHOFCODE-START-A-THON/
 └── frontend/            # the app (served at /)
     ├── index.html
     ├── styles.css
-    └── app.js           # screens: Record · Ask · Meetings · Dashboard · QR machine page · sign · Fix-it Challenge
+    └── app.js           # screens: Record · Ask · Practice · Dashboard · Wallet · Meetings · machine page · Fix-it Challenge · login
 ```
 
 ### Run it locally
@@ -142,31 +141,25 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 Open **http://localhost:8000** for the app and **http://localhost:8000/docs** for the API. Demo data loads on first start.
 
-> **Microphone on phones needs HTTPS.** Recording works on `localhost` and on any HTTPS deployment. On plain `http://<LAN-IP>` phones fall back to "Type instead"; everything else (Ask, QR pages, Dashboard) works.
+> **Microphone on phones needs HTTPS.** Recording works on `localhost` and on any HTTPS deployment. On plain `http://<LAN-IP>` phones fall back to "Type instead"; everything else (Ask, machine pages, Dashboard) works.
 
 ### The app
 
 | Screen | What it does |
 |---|---|
-| 🎙️ **Record** | Big mic button; the 3 questions shown one by one; pulsing red dot + timer → "AI is writing your card…" → the card slides in → **Approve / Edit / Discard**. Shows a colleague's open question if you're the right expert. "Type instead" fallback. |
-| 🔎 **Ask** | Ask in any language → numbered steps, each with a source badge ("from Herr Müller, 3 Nov · 32 yrs"), the warning, and the source cards with **Did this work? 👍 👎**. Links like `#/ask/<question>` run a question directly. |
-| 👥 **Meetings** | Consent checkbox unlocks recording → red recording bar with timer → decisions, problems, lessons, action items → **Add to knowledge base**. |
-| 📊 **Dashboard** | Stats, alerts, knowledge-risk map (machines coloured by risk), drafts waiting for approval, open questions, QR codes per machine, demo reset. |
-| ⚙️ **Machine page** `#/m/<id>` | What the QR code opens on a phone: the machine's alerts and approved fixes, proven first. |
-| 🖨️ **Sign** `#/sign/<id>` | Printable A4 sign with the machine name and QR code. |
+| 🎙️ **Record** | Big mic button; the 3 questions shown one by one; pulsing red dot + timer → "AI is writing your card…" → "Detected: <machine>" with Change → **Approve / Edit / Discard**. Shows a colleague's open question if you're the right expert. "Type instead" fallback. **Record a meeting** opens Meetings. |
+| 🔎 **Ask** | Ask in any language → numbered steps, each with a source ("from Herr Müller, 3 Nov · 32 yrs"), the warning, and the source cards with **Did this work? Worked / Didn't work**. No answer → the question goes to the experts. |
+| 👥 **Meetings** (from Record) | Consent checkbox unlocks recording → red recording bar with timer → decisions, problems, lessons, action items → **Add to knowledge base**. |
+| 🎮 **Practice** | Fix-it Challenges from approved cards, grouped by machine (Packaging Machine first): "4 answers · 1 min" → **Start**. Progress ("Challenges done: 2 of 15") and badges stay on the device only. |
+| 📊 **Dashboard** | KPI tiles, recurring problems, one-person risks, who-knows-which-machine heatmap, drafts, open questions, machines list, demo reset. |
+| 🪙 **Wallet** | Token balance, this month's progress to the 50 € cap, recent earnings, demo canteen voucher QR. |
+| ⚙️ **Machine page** `#/m/<id>` | The machine's alerts and approved fixes, proven first. |
 
 Tap the name in the top-right to switch person (e.g. Herr Müller → Ahmed) during the demo.
 
-### Put it online (so the jury's phones can scan the QR codes)
+### Put it online (optional)
 
-**Fastest, about 1 minute, from the laptop that runs the server:**
-
-```bash
-brew install cloudflared                        # once
-cloudflared tunnel --url http://localhost:8000  # prints https://<random>.trycloudflare.com
-```
-
-Then restart the server with `KNOWFLOW_PUBLIC_URL=https://<random>.trycloudflare.com` in `backend/.env`, and print the signs from **Dashboard → QR codes**. The link stays the same only while that command runs, so print the signs after starting it. HTTPS also makes the microphone work on phones.
+The pitch runs on the laptop. To share it, a tunnel works from the laptop that runs the server: `cloudflared tunnel --url http://localhost:8000` (HTTPS also makes the microphone work on phones).
 
 **Proper hosting, about 5 minutes, on Render (free):** in Render, choose **New + → Blueprint**, pick this repo (it reads [`render.yaml`](render.yaml)), and set `OPENAI_API_KEY` in the service's *Environment* tab. Then set `KNOWFLOW_PUBLIC_URL` to the `https://knowflow-….onrender.com` address. The free plan sleeps after 15 minutes without traffic, so open the page once just before the pitch.
 
@@ -183,7 +176,7 @@ python -m pytest -q
 | `OPENAI_API_KEY` | – | Turns on the AI brain and speech-to-text |
 | `OPENAI_MODEL` | `gpt-4o-mini` | Chat model for structuring, answers and meetings |
 | `OPENAI_STT_MODEL` | `whisper-1` | Speech-to-text model |
-| `KNOWFLOW_PUBLIC_URL` | this server | Public URL printed QR codes open (`<url>/#/m/<id>`) |
+| `KNOWFLOW_PUBLIC_URL` | this server | Public base URL for machine links (`<url>/#/m/<id>`) |
 | `KNOWFLOW_SEED` | `1` | Load demo data on first start |
 | `KNOWFLOW_ALLOW_RESET` | `1` | Allow `POST /admin/reset-demo` (set to `0` in production) |
 
@@ -201,8 +194,8 @@ python -m pytest -q
 | `GET` | `/open-questions` | `?expert=Herr Müller` | unanswered questions (closed loop) |
 | `POST` | `/open-questions/{id}/resolve` | `{card_id}` | marks a question answered |
 | `GET` | `/machines` | – | machines with card and expert counts |
-| `GET` | `/machine/{id}` | from the QR scan | approved cards for the machine, proven first, plus its alerts |
-| `GET` | `/machine/{id}/qr.svg` | – | printable QR code |
+| `GET` | `/machine/{id}` | – | approved cards for the machine, proven first, plus its alerts |
+| `GET` | `/machine/{id}/qr.svg` | – | QR code for the machine link (API only, not shown in the app) |
 | `GET` | `/alerts` | – | recurring problems, knowledge risks, disputed fixes |
 | `GET` | `/risk-map` | – | per machine: who knows it, who retires soon, risk level |
 | `GET` | `/stats` | – | headline numbers for the dashboard |
@@ -293,7 +286,7 @@ All three use strict JSON-schema outputs, so the frontend always gets the same s
 | | Role | Owns |
 |---|---|---|
 | **Rishabh** | Backend + frontend | API, speech-to-text, AI structuring, search and answers, pattern alerts, sample data, the web app |
-| **Aditi** | Frontend | Record, card, ask, QR machine page, dashboard, meetings; demo flow; backup demo video |
+| **Aditi** | Frontend | Record, card, ask, machine page, dashboard, meetings; demo flow; backup demo video |
 | **Aryan** | Business | Problem slide, business model, pricing, costs, competition, deck, pitch |
 | **Bushra** | Marketing | First customers, first 100 users, go-to-market slides, pitch, jury Q&A |
 

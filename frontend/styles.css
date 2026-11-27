@@ -413,15 +413,6 @@ details.result-sec summary { cursor: pointer; min-height: 32px; }
 .machine-hero h1 { margin: 6px 0 4px; display: flex; align-items: center; gap: 12px; }
 .machine-hero h1 .hero-ico, .hero-ico { width: 48px; height: 48px; border-radius: 14px; background: var(--surface); color: var(--violet); display: grid; place-items: center; flex: none; box-shadow: var(--shadow); }
 .machine-hero p { margin: 0; color: var(--ink-2); }
-.sign { background: #fff; border-radius: 20px; padding: 32px 24px; text-align: center; border: 1px solid var(--line); box-shadow: var(--shadow); }
-.sign h1 { font-size: 40px; margin: 8px 0 0; }
-.sign img { width: 100%; max-width: 340px; margin: 18px auto; display: block; }
-@media print {
-  .topbar, .tabs, .no-print { display: none !important; }
-  body { background: #fff; padding: 0; }
-  .sign { border: none; box-shadow: none; }
-}
-
 /* ---------- empty, toast, modal ---------- */
 .empty {
   text-align: center; color: var(--ink-2); padding: 32px 20px; background: var(--surface); border: 1px solid var(--line);
@@ -607,3 +598,16 @@ body.login-mode::before {
   .login-art { display: block; }
   .login-form { width: 50%; padding: 44px 40px; }
 }
+
+/* ---------- practice ---------- */
+.practice-progress #practiceDone { font-weight: 500; }
+.practice-card {
+  display: flex; align-items: center; gap: 14px; background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px 20px; min-width: 0; overflow-wrap: anywhere;
+  animation: slideIn .25s var(--ease) both;
+}
+.practice-card b { display: block; font-weight: 500; font-size: 17px; line-height: 1.35; margin: 2px 0 4px; }
+.practice-card .eyebrow { margin: 0; }
+.practice-card .btn { flex: none; }
+.practice-card.done { background: #FBFAFD; }
+.section-label .i { width: 16px; height: 16px; }

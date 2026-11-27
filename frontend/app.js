@@ -1,5 +1,5 @@
 /* KnowFlow frontend: vanilla JS single-page app, served by the FastAPI backend.
- * Routes (hash): #/record  #/ask  #/meetings  #/dashboard  #/m/<machine>  #/sign/<machine>  #/card/<id>
+ * Routes (hash): #/record  #/ask  #/practice  #/play/<card>  #/meetings  #/dashboard  #/wallet  #/m/<machine>  #/card/<id>  #/login
  * API base: same origin by default; override with ?api=https://host (remembered).
  */
 // Safe localStorage: private mode or blocked storage must never break the app.
@@ -398,6 +398,7 @@ const store = {
         </div>
         <button class="btn ghost" id="typeInstead" type="button" style="margin-top:6px">${ic("keyboard")}Type instead</button>
       </div>
+      <a class="btn block" href="#/meetings" id="toMeetings" style="margin-top:18px">${ic("users")}Record a meeting</a>
       <div id="typeBox" hidden class="stack">
         <textarea id="noteText" placeholder="What was difficult today? What did you solve, and how? What should the next person watch out for?"></textarea>
         <button class="btn primary block" id="sendText" type="button">Create card</button>
@@ -563,7 +564,6 @@ const store = {
         <input type="search" id="q" placeholder="e.g. packaging line jams, what do I do?" autocomplete="off" enterkeyhint="search">
         <button class="btn primary" aria-label="Ask">${ic("search")}Ask</button>
       </form>
-      <a class="btn block" href="#/challenge" style="margin-top:12px">${ic("gamepad")}New here? Try the Fix-it Challenge</a>
       <div class="chips" style="margin-top:12px">${SUGGESTIONS.map((s) => `<button class="chip" type="button" data-s="${esc(s)}">${esc(s)}</button>`).join("")}</div>
       <div id="answer"></div>`);
     const q = document.getElementById("q");
@@ -839,12 +839,11 @@ const store = {
             <small class="muted">${q.asked_by ? esc(q.asked_by) + " · " : ""}${ago(q.date)}</small></span></div>`).join("")}</div>`
           : `<div class="empty"><span class="ei">${ic("circle-check")}</span>Every question has an answer.</div>`}
 
-        <h2>QR codes for the machines</h2>
-        <p class="sub small">Print one and stick it on the machine. Scan it with a phone to see the fixes.</p>
-        <div class="list">${state.machines.map((m) => `
-          <a class="list-item" href="#/sign/${esc(m.machine_id)}"><span class="li-ico">${machineIcon(m.machine_id)}</span>
+        <h2>Machines</h2>
+        <div class="list" id="machineList">${state.machines.map((m) => `
+          <a class="list-item" href="#/m/${esc(m.machine_id)}"><span class="li-ico">${machineIcon(m.machine_id)}</span>
             <span class="grow"><b style="font-weight:500">${esc(m.machine)}</b><br><small class="muted">${m.cards} cards · ${m.experts} ${m.experts === 1 ? "expert" : "experts"}</small></span>
-            <span class="btn small">${ic("qr-code")}QR</span></a>`).join("")}</div>
+            <span class="muted-i">${ic("chevron-right")}</span></a>`).join("")}</div>
 
         <div class="no-print" style="margin-top:28px">
           <button class="btn ghost block" id="reset">${ic("rotate-ccw")}Reset demo data</button>
@@ -859,7 +858,7 @@ const store = {
     }
   }
 
-  // ------------------------------------------------------------ screen: machine (QR target)
+  // ------------------------------------------------------------ screen: machine page
   async function screenMachine(id) {
     render(`<div class="machine-hero"><div class="eyebrow">Machine</div><h1><span class="hero-ico">${machineIcon(id, "lg")}</span>…</h1><p>Loading the experts' answers…</p></div><div class="stack"><div class="skeleton"></div><div class="skeleton" style="width:70%"></div></div>`);
     try {
@@ -872,28 +871,12 @@ const store = {
         </div>
         ${m.alerts.length ? `<div class="list machine-alerts">${m.alerts.map((a) => alertRow(a, false)).join("")}</div>` : ""}
         <div class="row" style="margin-bottom:14px">
-          <a class="btn primary grow" href="#/challenge/${esc(m.machine_id)}">${ic("gamepad")}Fix-it Challenge</a>
-          <a class="btn grow" href="#/ask">${ic("search")}Ask</a>
+          <a class="btn grow" href="#/ask">${ic("search")}Ask about this machine</a>
         </div>
         <div class="stack" data-title>${m.cards.map((c) => cardHTML(c, { feedback: true, titleFromProblem: true })).join("")}</div>`);
     } catch (e) {
       render(`<div class="empty"><span class="ei">${ic("file-question")}</span>${esc(e.message)}<br><br><a class="btn" href="#/record">${ic("mic")}Log the first entry</a></div>`);
     }
-  }
-
-  function screenSign(id) {
-    const m = state.machines.find((x) => x.machine_id === id) || { machine: id };
-    render(`
-      <div class="sign">
-        <div class="eyebrow" style="justify-content:center">${ic("qr-code")}KnowFlow · scan for tips</div>
-        <h1>${esc(m.machine)}</h1>
-        <img src="${API}/machine/${encodeURIComponent(id)}/qr.svg" alt="QR code for ${esc(m.machine)}">
-        <p class="muted">Problem with this machine? Scan with your phone camera to see how colleagues fixed it.</p>
-      </div>
-      <div class="row no-print" style="margin-top:14px">
-        <button class="btn primary grow" onclick="window.print()">${ic("printer")}Print sign</button>
-        <a class="btn grow" href="#/m/${esc(id)}">Open page</a>
-      </div>`);
   }
 
   async function screenCard(id) {
@@ -915,6 +898,7 @@ const store = {
     try {
       g = await api("/challenge", { method: "POST", json: {
         machine: machine || undefined,
+        card_id: opts.card_id ? +opts.card_id : undefined,
         exclude: opts.exclude || [],
       } });
     } catch (e) {
@@ -939,6 +923,7 @@ const store = {
       if (!b || box.classList.contains("done")) return;
       box.classList.add("done");
       const pick = g.options[+b.dataset.i];
+      savePractice(g.card_id, pick.correct ? g.badge : null);
       box.querySelectorAll(".option").forEach((el) => {
         const o = g.options[+el.dataset.i];
         if (o.correct) el.classList.add("right");
@@ -960,12 +945,62 @@ const store = {
           <span class="small">Now you know the trick. Try another one.</span></div>`}
         <div class="row" style="margin-top:14px">
           <button class="btn primary grow" id="nextGame">${ic("gamepad")}Another challenge</button>
-          <a class="btn grow" href="#/m/${esc(g.machine_id || "")}">See all tips</a>
+          <a class="btn grow" href="#/practice">All challenges</a>
         </div>`;
       document.getElementById("after").scrollIntoView({ behavior: "smooth", block: "start" });
-      document.getElementById("nextGame").addEventListener("click", () =>
-        screenChallenge("", { exclude: [g.card_id] }));
+      document.getElementById("nextGame").addEventListener("click", () => {
+        const done = Object.keys(practice().done).map(Number);
+        screenChallenge("", { exclude: [...new Set([g.card_id, ...done])] });
+      });
     });
+  }
+
+  // ------------------------------------------------------------ screen: practice
+  // Progress is kept only on this device (localStorage), never sent to the server.
+  function practice() {
+    try { return JSON.parse(store.get("practice_" + state.user) || "") || { done: {} }; } catch (_) { return { done: {} }; }
+  }
+  function savePractice(cardId, badge) {
+    const p = practice();
+    p.done[cardId] = badge || p.done[cardId] || "";
+    store.set("practice_" + state.user, JSON.stringify(p));
+  }
+  const MACHINE_ORDER = ["packaging-machine", "machine-1", "press-2", "compressor"];
+
+  async function screenPractice() {
+    render(`<h1>Practice</h1><p class="sub">Short challenges built from approved fixes.</p>
+      <div class="stack"><div class="skeleton" style="height:90px"></div><div class="skeleton" style="height:90px"></div></div>`);
+    let cards;
+    try { cards = (await api("/entries?status=approved")).filter((c) => c.machine_id && c.solution); }
+    catch (e) { return render(`<h1>Practice</h1><div class="empty"><span class="ei">${ic("gamepad")}</span>${esc(e.message)}</div>`); }
+    const p = practice();
+    const doneIds = cards.filter((c) => c.id in p.done);
+    const badges = [...new Set(doneIds.map((c) => p.done[c.id]).filter(Boolean))];
+    const rank = (id) => { const i = MACHINE_ORDER.indexOf(id); return i < 0 ? 99 : i; };
+    const groups = {};
+    cards.forEach((c) => (groups[c.machine_id] = groups[c.machine_id] || []).push(c));
+    const ids = Object.keys(groups).sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+    const pct = cards.length ? Math.round((doneIds.length / cards.length) * 100) : 0;
+    render(`
+      <h1>Practice</h1>
+      <p class="sub">Short challenges built from approved fixes. Learn what the experts know, one situation at a time.</p>
+      <section class="panel practice-progress">
+        <div class="row-between"><span class="eyebrow" style="margin:0">Progress</span><span id="practiceDone">Challenges done: ${doneIds.length} of ${cards.length}</span></div>
+        <div class="confidence wallet-bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><i style="width:${pct}%"></i></div>
+        ${badges.length ? `<div class="badges" style="margin-top:6px">${badges.map((b) => `<span class="badge">${ic("award")}${esc(b)}</span>`).join("")}</div>`
+          : `<small class="muted">Get one right to earn your first badge.</small>`}
+      </section>
+      ${ids.map((id) => `
+        <div class="section-label">${machineIcon(id)}${esc(groups[id][0].machine)}</div>
+        <div class="stack">${groups[id].map((c) => `
+          <article class="practice-card${c.id in p.done ? " done" : ""}">
+            <div class="grow">
+              <div class="eyebrow">${esc(c.machine)}${c.id in p.done ? ` · ${p.done[c.id] ? "Badge earned" : "Done"}` : ""}</div>
+              <b>${esc(c.problem)}</b>
+              <small class="muted">4 answers · 1 min</small>
+            </div>
+            <a class="btn ${c.id in p.done ? "" : "primary"} small" href="#/play/${c.id}" data-play="${c.id}">${c.id in p.done ? "Again" : "Start"}</a>
+          </article>`).join("")}</div>`).join("")}`);
   }
 
   // ------------------------------------------------------------ screen: wallet
@@ -1120,7 +1155,8 @@ const store = {
   function route() {
     if (activeRecorder) { activeRecorder.cancel(); activeRecorder = null; }
     const [, name, arg] = (location.hash || "#/record").split("/");
-    document.querySelectorAll("#tabs a").forEach((a) => a.classList.toggle("active", a.dataset.tab === name));
+    const tab = { play: "practice", challenge: "practice", meetings: "record" }[name] || name;
+    document.querySelectorAll("#tabs a").forEach((a) => a.classList.toggle("active", a.dataset.tab === tab));
     document.body.classList.toggle("login-mode", name === "login");
     if (name !== "login" && mapAnim) { cancelAnimationFrame(mapAnim); mapAnim = null; }
     window.scrollTo(0, 0);
@@ -1131,8 +1167,9 @@ const store = {
       case "wallet": return screenWallet();
       case "login": return screenLogin();
       case "m": return screenMachine(decodeURIComponent(arg || ""));
-      case "sign": return screenSign(decodeURIComponent(arg || ""));
       case "card": return screenCard(arg);
+      case "practice": return screenPractice();
+      case "play": return screenChallenge("", { card_id: arg });
       case "challenge": return screenChallenge(arg ? decodeURIComponent(arg) : "");
       default: return screenRecord();
     }
