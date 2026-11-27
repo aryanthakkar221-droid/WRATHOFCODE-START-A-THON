@@ -844,3 +844,14 @@ body.login-mode::before {
 .msg.bot > .section-label { margin-top: 14px; }
 .chat-note { display: flex; align-items: center; gap: 6px; margin: 10px 2px 0; }
 .chat-note .i { width: 14px; height: 14px; }
+
+/* ---------- expert inbox ---------- */
+.review-card { margin: 0 0 16px; border-left: 3px solid var(--violet); }
+.review-card .dhead { flex-wrap: wrap; }
+.review-card .kcard { box-shadow: none; }
+.help-tips { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 14px; }
+.help-tips .eyebrow { margin: 0 0 8px; }
+.help-tip { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); flex-wrap: wrap; }
+.help-tip:first-of-type { border-top: 0; }
+.help-tip .btn { white-space: nowrap; }
+@media (min-width: 1024px) { .review-card { margin-bottom: 24px; } }

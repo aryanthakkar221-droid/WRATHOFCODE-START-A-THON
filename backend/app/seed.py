@@ -156,8 +156,16 @@ TOKENS = [
     (3, "Frau Schneider", 5, "Your card was approved: Compressor starts and stops every few seconds"),
 ]
 
-OPEN_QUESTIONS = [
-    ("The compressor shows a red oil light. What do I do?", "compressor", "Ahmed"),
+OPEN_QUESTIONS = [  # (question, machine, asked by, days ago)
+    ("The compressor shows a red oil light. What do I do?", "compressor", "Ahmed", 4),
+    ("Red oil light on the compressor again. Can it keep running?", "compressor", "Lena Kowalski", 6),
+    ("Kompressor: rote Öl-Lampe leuchtet. Was tun?", "compressor", "Ahmed", 9),
+]
+
+# Fix-it Challenge results as counts only (no names): (card problem, right, wrong)
+CHALLENGE_STATS = [
+    ("Film jams at the start on Monday morning.", 2, 5),
+    ("Machine stops with alarm E-217.", 4, 1),
 ]
 
 
@@ -168,6 +176,7 @@ def seed(reset: bool = False) -> int:
             c.execute("DELETE FROM cards")
             c.execute("DELETE FROM meetings")
             c.execute("DELETE FROM consent_requests")
+            c.execute("DELETE FROM challenge_stats")
             c.execute("DELETE FROM open_questions")
             c.execute("DELETE FROM experts")
             c.execute("DELETE FROM shift_plan")
@@ -199,9 +208,13 @@ def seed(reset: bool = False) -> int:
         for days, person, amount, reason in TOKENS:
             c.execute("INSERT INTO token_events (date, person, amount, reason) VALUES (?,?,?,?)",
                       (_ago(days, 10), person, amount, reason))
-        for q, mid, who in OPEN_QUESTIONS:
+        for q, mid, who, days in OPEN_QUESTIONS:
             c.execute("INSERT INTO open_questions (date, question, machine_id, asked_by) VALUES (?,?,?,?)",
-                      (_ago(4), q, mid, who))
+                      (_ago(days), q, mid, who))
+        for problem, right, wrong in CHALLENGE_STATS:
+            row = c.execute("SELECT id FROM cards WHERE problem=?", (problem,)).fetchone()
+            if row:
+                c.execute("INSERT OR REPLACE INTO challenge_stats VALUES (?,?,?)", (row["id"], right, wrong))
         return len(ENTRIES)
 
 

@@ -53,6 +53,11 @@ CREATE TABLE IF NOT EXISTS meetings (
     result TEXT NOT NULL DEFAULT '{}',
     consent_log TEXT NOT NULL DEFAULT '[]'      -- who agreed to the recording, when, on which device
 );
+CREATE TABLE IF NOT EXISTS challenge_stats (   -- anonymous: counts only, never who answered
+    card_id INTEGER PRIMARY KEY,
+    right_count INTEGER NOT NULL DEFAULT 0,
+    wrong_count INTEGER NOT NULL DEFAULT 0
+);
 CREATE TABLE IF NOT EXISTS consent_requests (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     created TEXT NOT NULL,

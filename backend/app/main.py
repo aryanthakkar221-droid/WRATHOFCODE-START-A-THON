@@ -295,6 +295,9 @@ def approve_card(card_id: int, body: Approve) -> Dict[str, Any]:
         card = _card_or_404(c, card_id)
         if card.get("shared_by") and body.expert != card["author"]:
             raise HTTPException(403, "Only %s can approve this tip." % card["author"])
+        approver = c.execute("SELECT years_experience FROM experts WHERE name=?", (body.expert,)).fetchone()
+        if not approver or (approver["years_experience"] or 0) < db.EXPERT_YEARS:
+            raise HTTPException(403, "Only experts (%d+ years) can approve cards." % db.EXPERT_YEARS)
         r = c.execute("SELECT audio_path FROM cards WHERE id=?", (card_id,)).fetchone()
         _delete_audio(r["audio_path"])
         c.execute(
@@ -403,6 +406,76 @@ def ask(body: Ask) -> Dict[str, Any]:
     result["question"] = body.question
     result["asked"] = asked
     return result
+
+
+# ------------------------------------------------------------------ expert inbox
+
+class ChallengeResult(BaseModel):
+    card_id: int
+    correct: bool
+
+
+@app.post("/practice/result", tags=["practice"])
+def practice_result(body: ChallengeResult) -> Dict[str, Any]:
+    """Count a Fix-it Challenge answer. Anonymous: no name is sent or stored."""
+    col = "right_count" if body.correct else "wrong_count"
+    with db.conn() as c:
+        c.execute("INSERT OR IGNORE INTO challenge_stats (card_id) VALUES (?)", (body.card_id,))
+        c.execute("UPDATE challenge_stats SET %s=%s+1 WHERE card_id=?" % (col, col), (body.card_id,))
+    return {"ok": True}
+
+
+def _machine_experts(c) -> Dict[str, set]:
+    """Who knows which machine: authors of approved cards with 5+ years, per machine."""
+    out: Dict[str, set] = {}
+    for r in c.execute("SELECT DISTINCT k.machine_id, k.author FROM cards k JOIN experts e ON e.name=k.author "
+                       "WHERE k.status='approved' AND k.machine_id IS NOT NULL AND e.years_experience>=?",
+                       (db.EXPERT_YEARS,)).fetchall():
+        out.setdefault(r["machine_id"], set()).add(r["author"])
+    return out
+
+
+@app.get("/review/{person}", tags=["cards"])
+def review_inbox(person: str, suggest: bool = True) -> Dict[str, Any]:
+    """Expert inbox: drafts this expert should review (their machines, machines without an
+    expert, their own drafts) and up to 3 AI suggestions where knowledge is missing.
+    Suggestions show counts only, never names or individual results."""
+    with db.conn() as c:
+        me = c.execute("SELECT years_experience FROM experts WHERE name=?", (person,)).fetchone()
+        if not me or (me["years_experience"] or 0) < db.EXPERT_YEARS:
+            return {"is_expert": False, "drafts": [], "suggestions": []}
+        experts = _machine_experts(c)
+        mine = {m for m, who in experts.items() if person in who}
+        drafts = []
+        for card in db.list_cards(c, None, "draft"):
+            if card.get("shared_by"):
+                ok = card["author"] == person
+            else:
+                ok = (card["author"] == person or card.get("machine_id") in mine
+                      or not experts.get(card.get("machine_id")))
+            if ok:
+                drafts.append(card)
+        names = {r["machine_id"]: r["machine"] for r in c.execute(
+            "SELECT DISTINCT machine_id, machine FROM cards WHERE machine_id IS NOT NULL").fetchall()}
+        facts = []
+        qs = [dict(r) for r in c.execute("SELECT * FROM open_questions WHERE resolved_card_id IS NULL "
+                                         "ORDER BY date DESC").fetchall()]
+        for mid in sorted({q["machine_id"] for q in qs if q["machine_id"] in mine}):
+            group = [q for q in qs if q["machine_id"] == mid]
+            facts.append({"kind": "open_questions", "machine": names.get(mid, mid), "count": len(group),
+                          "example": group[0]["question"], "action": "record", "question": group[0]["question"]})
+        for r in c.execute("SELECT s.card_id, s.right_count, s.wrong_count, k.problem, k.machine_id FROM challenge_stats s "
+                           "JOIN cards k ON k.id=s.card_id WHERE s.wrong_count>=3 AND s.wrong_count>s.right_count").fetchall():
+            if r["machine_id"] in mine:
+                facts.append({"kind": "challenge_often_wrong", "machine": names.get(r["machine_id"]),
+                              "card": r["problem"], "wrong": r["wrong_count"],
+                              "total": r["wrong_count"] + r["right_count"], "action": "card", "card_id": r["card_id"]})
+        for card in db.list_cards(c, None, "approved"):
+            if card["failed_count"] >= 2 and card["failed_count"] >= card["worked_count"] and card.get("machine_id") in mine:
+                facts.append({"kind": "fix_failed", "machine": card["machine"], "card": card["problem"],
+                              "failed": card["failed_count"], "action": "card", "card_id": card["id"]})
+    return {"is_expert": True, "drafts": drafts, "machines": sorted(names.get(m, m) for m in mine),
+            "suggestions": ai.review_suggestions(facts[:3]) if suggest else []}
 
 
 @app.get("/open-questions", tags=["ask"])

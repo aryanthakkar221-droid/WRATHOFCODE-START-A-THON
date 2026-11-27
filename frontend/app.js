@@ -187,14 +187,15 @@ const store = {
         <button class="btn small" data-fb="1" data-id="${c.id}">${ic("check")}Worked</button>
         <button class="btn small" data-fb="0" data-id="${c.id}">${ic("x")}Didn't work</button>
       </div>` : ""}
-      ${opts.approve && c.status !== "approved" ? `
+      ${opts.approve && c.status !== "approved" ? (!isExpert(state.user) ? `
+      <div class="card-actions"><span class="waiting">${ic("hourglass")}${c.shared_by ? `Waiting for ${esc(c.author)} to approve` : "Waiting for an expert"}</span></div>` : `
       <div class="card-actions">
         ${c.shared_by && c.author !== state.user
           ? `<span class="waiting">${ic("hourglass")}Waiting for ${esc(c.author)} to approve</span>`
           : `<button class="btn primary" data-approve="${c.id}">${ic("check")}Approve</button>`}
         <button class="btn" data-edit="${c.id}">${ic("pencil")}Edit</button>
         <button class="btn danger" data-reject="${c.id}">Discard</button>
-      </div>` : ""}
+      </div>`) : ""}
     </article>`;
   }
 
@@ -222,6 +223,7 @@ const store = {
         if (c.tokens) rewardToast(c.tokens, "Card approved. The recording is deleted");
         else toast("Card approved. The recording is deleted", "badge-check");
         refreshMachines();
+        refreshInviteDot();
       } catch (err) { toast(err.message); ap.disabled = false; }
       return;
     }
@@ -233,6 +235,7 @@ const store = {
         const el = view.querySelector(`[data-card="${rj.dataset.reject}"]`);
         if (el) el.remove();
         toast("Draft discarded");
+        refreshInviteDot();
       } catch (err) { toast(err.message); }
       return;
     }
@@ -281,6 +284,31 @@ const store = {
   }
 
   const chat = [];   // Ask conversation, this session only
+
+  // Expert inbox: "For you to review" + AI "How you can help" (counts only, never names)
+  async function loadReview() {
+    const el = document.getElementById("review");
+    if (!el) return;
+    if (!isExpert(state.user)) { el.innerHTML = ""; return; }
+    let r;
+    try { r = await api("/review/" + encodeURIComponent(state.user)); } catch (_) { return; }
+    if (!document.body.contains(el)) return;
+    el.innerHTML = `
+      <section class="dcard review-card">
+        <div class="dhead"><h2>For you to review <span class="count">${r.drafts.length}</span></h2>
+          <span class="small muted">${esc((r.machines || []).join(" · "))}</span></div>
+        ${r.drafts.length ? `<div class="stack">${r.drafts.map((c) => cardHTML(c, { approve: true, showTranscript: true, titleFromProblem: true })).join("")}</div>`
+          : `<div class="empty"><span class="ei">${ic("circle-check")}</span>Nothing to review right now.</div>`}
+        ${r.suggestions.length ? `<div class="help-tips"><div class="eyebrow">${ic("lightbulb")}How you can help</div>
+          ${r.suggestions.map((s, i) => `<div class="help-tip"><span class="grow">${esc(s.text)}</span>
+            <button class="btn small ${s.action === "record" ? "primary" : ""}" type="button" data-help="${i}">${s.action === "record" ? ic("mic") + "Add a card" : ic("eye") + "Review"}</button></div>`).join("")}</div>` : ""}
+      </section>`;
+    el.querySelectorAll("[data-help]").forEach((b) => b.addEventListener("click", () => {
+      const s = r.suggestions[+b.dataset.help];
+      if (s.action === "record") { store.set("record_prefill", s.question || ""); location.hash = "#/record"; if (location.hash === "#/record") route(); }
+      else location.hash = "#/card/" + s.card_id;
+    }));
+  }
 
   // ------------------------------------------------------------ user picker
   function renderWho() {
@@ -410,6 +438,7 @@ const store = {
     render(`
       <h1>Log your shift</h1>
       <p class="sub">Tap the mic and talk for about 2 minutes. KnowFlow writes the card for you.</p>
+      <div id="review"></div>
       <div id="loop"></div>
       <div class="stack">
         <div><label class="field">I'm speaking</label>${langChips()}</div>
@@ -441,7 +470,11 @@ const store = {
     `);
 
     // Closed loop: questions nobody could answer, for machines this person knows.
+    loadReview();
+    const prefill = store.get("record_prefill");
+    if (prefill) store.set("record_prefill", "");
     api("/open-questions?expert=" + encodeURIComponent(state.user)).then((qsList) => {
+      if (prefill) qsList = [{ question: prefill }];
       if (!qsList.length) return;
       const q = qsList[0];
       document.getElementById("loop").innerHTML = `
@@ -696,6 +729,9 @@ const store = {
   async function refreshInviteDot() {
     let n = 0;
     try { n = (await api("/meetings/consent?pending_for=" + encodeURIComponent(state.user))).length; } catch (_) {}
+    if (isExpert(state.user)) {
+      try { n += (await api("/review/" + encodeURIComponent(state.user) + "?suggest=false")).drafts.length; } catch (_) {}
+    }
     document.querySelectorAll('#tabs a[data-tab="dashboard"], .side-nav a[data-side="dashboard"]').forEach((t) => t.classList.toggle("has-dot", n > 0));
     return n;
   }
@@ -939,11 +975,19 @@ const store = {
       const r = await api("/meetings", { method: "POST", form });
       store.set("consent_" + state.user, "");
       box.innerHTML = meetingResultHTML(r) + `
-        ${r.cards.length ? `<button class="btn primary block" id="addAll">${ic("check")}Add ${r.cards.length} cards to knowledge base</button>` : ""}
+        ${r.cards.length ? (isExpert(state.user)
+          ? `<button class="btn primary block" id="addAll">${ic("check")}Add ${r.cards.length} cards to knowledge base</button>`
+          : `<button class="btn primary block" id="addAll" data-send>${ic("arrow-right")}Send ${r.cards.length} cards to the experts for approval</button>`) : ""}
         <button class="btn ghost block" id="newMeet">New meeting</button>`;
       const addAll = document.getElementById("addAll");
       if (addAll) addAll.addEventListener("click", async () => {
         addAll.disabled = true;
+        if (addAll.hasAttribute("data-send")) {   // newer worker: cards stay drafts in the experts' inbox
+          addAll.innerHTML = ic("check") + "Sent. Waiting for an expert";
+          toast("Sent to the experts for approval", "check");
+          refreshInviteDot();
+          return;
+        }
         try {
           for (const c of r.cards) await api(`/cards/${c.id}/approve`, { method: "POST", json: { expert: state.user } });
           addAll.innerHTML = ic("check") + "Added to knowledge base";
@@ -1099,6 +1143,7 @@ const store = {
         <div class="dash-head"><div><h1>Dashboard</h1>
           <p class="sub">Where knowledge is at risk, and what keeps coming back.</p></div></div>
         <div id="invites"></div>
+        <div id="review"></div>
 
         <div class="kpis stats dash-kpis">
           ${kpi("t-violet", "badge-check", stats.cards_approved, "Approved cards", `+${newThisWeek} this week`)}
@@ -1182,6 +1227,7 @@ const store = {
         catch (e) { toast(e.message); }
       });
       loadInvites();
+      loadReview();
     } catch (e) {
       render(`<h1>Dashboard</h1><div class="empty"><span class="ei">${ic("file-question")}</span>${esc(e.message)}</div>`);
     }
@@ -1253,6 +1299,7 @@ const store = {
       box.classList.add("done");
       const pick = g.options[+b.dataset.i];
       savePractice(g.card_id, pick.correct ? g.badge : null);
+      if (g.card_id) api("/practice/result", { method: "POST", json: { card_id: g.card_id, correct: !!pick.correct } }).catch(() => {});
       box.querySelectorAll(".option").forEach((el) => {
         const o = g.options[+el.dataset.i];
         if (o.correct) el.classList.add("right");

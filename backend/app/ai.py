@@ -112,6 +112,43 @@ def standalone_question(question: str, history: List[Dict[str, Any]]) -> str:
     return question
 
 
+def _suggestion_fallback(f: Dict[str, Any]) -> str:
+    if f["kind"] == "open_questions":
+        who = "colleague asked" if f["count"] == 1 else "colleagues asked"
+        return "%d %s about the %s: \u201c%s\u201d Add a card?" % (f["count"], who, f["machine"], f["example"])
+    if f["kind"] == "challenge_often_wrong":
+        return ("New workers often get the \u201c%s\u201d challenge wrong (%d of %d answers). Add a clearer tip?"
+                % (f["card"].rstrip("."), f["wrong"], f["total"]))
+    return "The fix for \u201c%s\u201d failed %d times. Please review." % (f["card"].rstrip("."), f["failed"])
+
+
+def review_suggestions(facts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Up to 3 short 'How you can help' suggestions for an expert, written by the AI from
+    knowledge-gap facts (counts only). Never names or judges individual employees."""
+    if not facts:
+        return []
+    clean = [{k: v for k, v in f.items() if k not in ("action", "card_id", "question")} for f in facts]
+    out = _call_json(
+        "You write short suggestions (max 20 words each) for a senior factory expert about where their "
+        "knowledge is missing. Exactly one suggestion per fact, same order. Each suggestion MUST contain the "
+        "number from the fact (count, wrong or failed) and the machine or card name. Never mention, guess "
+        "or judge any individual person. Style examples:\n"
+        "open_questions -> '3 colleagues asked about the Compressor oil light. Add a card?'\n"
+        "challenge_often_wrong -> 'New workers often miss the Packaging Machine film-jam challenge (5 of 7 "
+        "answers wrong). Add a clearer tip?'\n"
+        "fix_failed -> 'The fix for \\'Steel parts come out rough\\' failed twice. Please review.'",
+        json.dumps(clean, ensure_ascii=False),
+        {"type": "object", "additionalProperties": False, "required": ["suggestions"],
+         "properties": {"suggestions": {"type": "array", "items": {"type": "string"}}}}, "suggestions")
+    texts = (out or {}).get("suggestions") or []
+    res = []
+    for i, f in enumerate(facts[:3]):
+        t = texts[i].strip() if i < len(texts) and texts[i].strip() else _suggestion_fallback(f)
+        res.append({"text": t, "kind": f["kind"], "action": f["action"],
+                    "question": f.get("question"), "card_id": f.get("card_id")})
+    return res
+
+
 def general_answer(question: str, person: Optional[str]) -> str:
     """Friendly, short general chat answer. Never machine repair steps. Not stored anywhere."""
     name = (person or "").strip()

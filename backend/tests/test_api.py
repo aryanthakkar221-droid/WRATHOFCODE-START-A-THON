@@ -321,3 +321,22 @@ def test_ask_follow_up_uses_session_history():
     r2 = client.post("/ask", json={"question": "and what if that doesn't help?", "asked_by": "Ahmed", "history": hist}).json()
     assert r2["asked"] == "and what if that doesn't help?" and "packaging" in r2["question"].lower()
     assert not r2.get("general")
+
+
+def test_only_experts_can_approve_and_inbox():
+    d = client.post("/entries", data={"author": "Ahmed", "machine": "Machine 1",
+                                      "text": "Machine 1 stopped twice, I cleaned the coolant filter and it ran again."}).json()["card"]
+    assert client.post("/cards/%d/approve" % d["id"], json={"expert": "Ahmed"}).status_code == 403
+    inbox = client.get("/review/Frau Schneider").json()          # Machine 1 expert sees it
+    assert inbox["is_expert"] and any(x["id"] == d["id"] for x in inbox["drafts"])
+    assert client.get("/review/Ahmed").json() == {"is_expert": False, "drafts": [], "suggestions": []}
+    m = client.get("/review/Herr Müller").json()
+    texts = " ".join(s["text"] for s in m["suggestions"])
+    assert m["is_expert"] and m["suggestions"] and len(m["suggestions"]) <= 3
+    assert not any(n in texts for n in ("Ahmed", "Lena", "Kowalski"))   # counts only, no names
+    assert any(s["action"] == "record" and s["question"] for s in m["suggestions"])
+    assert client.post("/cards/%d/approve" % d["id"], json={"expert": "Frau Schneider"}).status_code == 200
+
+
+def test_practice_result_is_anonymous_counts():
+    assert client.post("/practice/result", json={"card_id": 1, "correct": False}).json() == {"ok": True}
