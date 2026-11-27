@@ -643,3 +643,22 @@ body.login-mode::before {
   border-left: 3px solid #B42318; border-radius: 14px; padding: 14px 16px; box-shadow: var(--shadow); }
 .say-aloud b { font-weight: 500; font-size: 18px; }
 .consent-log { display: flex; flex-direction: column; gap: 2px; margin-top: 10px; font-size: 14px; color: var(--ink-2); }
+
+/* ---------- Ask: prompt box ---------- */
+.promptbox { display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line-2); border-radius: 28px;
+  padding: 8px; box-shadow: var(--shadow); cursor: text; transition: border-color .2s var(--ease), box-shadow .2s var(--ease); }
+.promptbox:focus-within { border-color: var(--violet); box-shadow: 0 0 0 4px rgba(123, 63, 228, .12), var(--shadow); }
+.promptbox textarea { width: 100%; min-height: 48px; max-height: 200px; resize: none; border: 0; background: transparent; padding: 12px;
+  font: inherit; font-size: 17px; color: var(--ink); box-shadow: none; outline: none; }
+.promptbox textarea:focus { box-shadow: none; border: 0; outline: none; }
+.pb-row { display: flex; align-items: center; gap: 8px; padding: 0 4px 4px; }
+.pb-icon, .pb-send { width: 44px; height: 44px; flex: none; border-radius: 999px; display: grid; place-items: center; border: 0; cursor: pointer;
+  transition: background .15s var(--ease), opacity .15s; }
+.pb-icon { background: transparent; color: var(--ink); }
+.pb-icon:hover { background: #F1ECF8; }
+.pb-icon.on { background: var(--danger-soft); color: var(--danger); }
+.pb-icon svg { width: 22px; height: 22px; }
+.pb-send { background: var(--ink); color: #fff; }
+.pb-send:hover { background: #2E2638; }
+.pb-send:disabled { background: rgba(28, 22, 36, .3); cursor: default; }
+.pb-send svg { width: 22px; height: 22px; }

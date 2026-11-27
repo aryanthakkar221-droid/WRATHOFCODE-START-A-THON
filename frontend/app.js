@@ -591,16 +591,34 @@ const store = {
     render(`
       <h1>Ask KnowFlow</h1>
       <p class="sub">Ask in your own words, in any language. Answers come from real entries by your colleagues.</p>
-      <form class="searchbar" id="askForm">
-        <input type="search" id="q" placeholder="e.g. packaging line jams, what do I do?" autocomplete="off" enterkeyhint="search">
-        <button class="btn primary" aria-label="Ask">${ic("search")}Ask</button>
+      <form class="promptbox" id="askForm">
+        <textarea id="q" rows="1" placeholder="Ask anything about your machines…" autocomplete="off" enterkeyhint="send" aria-label="Your question"></textarea>
+        <div class="pb-row">
+          <span class="grow"></span>
+          <button type="button" class="pb-icon" id="askMic" aria-label="Speak your question" title="Speak your question">${ic("mic")}</button>
+          <button type="submit" class="pb-send" id="askSend" aria-label="Ask" title="Ask" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 18.75V5.25M18.75 12 12 5.25 5.25 12"/></svg></button>
+        </div>
       </form>
-      <div class="chips" style="margin-top:12px">${SUGGESTIONS.map((s) => `<button class="chip" type="button" data-s="${esc(s)}">${esc(s)}</button>`).join("")}</div>
       <div id="answer"></div>`);
-    const q = document.getElementById("q");
+    const q = document.getElementById("q"), send = document.getElementById("askSend");
+    const grow = () => { q.style.height = "auto"; q.style.height = Math.min(q.scrollHeight, 200) + "px"; send.disabled = !q.value.trim(); };
+    q.addEventListener("input", grow);
+    q.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); document.getElementById("askForm").requestSubmit(); } });
+    document.querySelector(".promptbox").addEventListener("click", (e) => { if (e.target.closest(".promptbox") && !e.target.closest("button")) q.focus(); });
+    // mic: browser speech recognition fills the box (hidden where the browser has none)
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition, micB = document.getElementById("askMic");
+    if (!SR) micB.hidden = true; else micB.addEventListener("click", () => {
+      const r = new SR(); r.lang = state.lang === "de" ? "de-DE" : state.lang === "en" ? "en-US" : navigator.language || "de-DE"; r.interimResults = true;
+      micB.classList.add("on");
+      r.onresult = (ev) => { q.value = [...ev.results].map((x) => x[0].transcript).join(" "); grow(); };
+      r.onend = () => { micB.classList.remove("on"); if (q.value.trim()) document.getElementById("askForm").requestSubmit(); };
+      r.onerror = () => { micB.classList.remove("on"); toast("Microphone not available here"); };
+      r.start();
+    });
     const go = async (text) => {
       if (!text.trim()) return;
-      q.value = text;
+      q.value = text; grow();
       const box = document.getElementById("answer");
       box.innerHTML = `<div class="answer"><div class="stack"><div class="skeleton" style="width:70%"></div><div class="skeleton"></div><div class="skeleton" style="width:85%"></div></div></div>`;
       try {
@@ -611,7 +629,6 @@ const store = {
       }
     };
     document.getElementById("askForm").addEventListener("submit", (e) => { e.preventDefault(); go(q.value); });
-    view.querySelectorAll("[data-s]").forEach((c) => c.addEventListener("click", () => go(c.dataset.s)));
     if (preset) go(preset); else q.focus();
   }
 
