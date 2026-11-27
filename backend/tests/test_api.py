@@ -96,3 +96,29 @@ def test_dashboard_endpoints():
     s = client.get("/stats").json()
     assert s["cards_approved"] >= 15 and s["meetings"] >= 1
     assert client.get("/machines").json()
+
+
+def test_too_short_or_empty_note_is_rejected_not_invented():
+    r = client.post("/entries", data={"author": "Ahmed", "text": "you"})
+    assert r.status_code == 422
+    r = client.post("/entries/text", json={"author": "Ahmed", "text": "ok thanks"})
+    assert r.status_code == 422
+
+
+def test_silence_transcripts_are_caught():
+    from fastapi import HTTPException
+
+    from app.main import _check_heard
+    for t in ["you", "Thank you.", "Untertitel der Amara.org-Community", "  ", "Bye."]:
+        try:
+            _check_heard(t)
+            raise AssertionError("should reject: %r" % t)
+        except HTTPException as e:
+            assert e.status_code == 422
+    _check_heard("Spindle noise at startup, let it warm up first.")
+
+
+def test_open_questions_for_expert_puts_their_machines_first():
+    client.post("/ask", json={"question": "How do I refill the coffee machine in hall Z?"})
+    qs = client.get("/open-questions", params={"expert": "Herr Weber"}).json()
+    assert qs[0]["machine_id"] == "welding-robot"

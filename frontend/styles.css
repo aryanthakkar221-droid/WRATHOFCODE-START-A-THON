@@ -301,3 +301,5 @@ dialog h2 { margin-top: 0; }
 /* never scroll sideways on phones */
 html, body { overflow-x: hidden; }
 main, .kcard, .answer, .alert, .stat, .risk, .list-item { min-width: 0; overflow-wrap: anywhere; }
+/* keep focused/scrolled-to elements clear of the sticky header and the bottom tab bar */
+html { scroll-padding-top: 80px; scroll-padding-bottom: calc(var(--tabs-h) + 24px); }

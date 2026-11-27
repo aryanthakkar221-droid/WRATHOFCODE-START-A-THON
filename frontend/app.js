@@ -20,7 +20,21 @@ const store = {
     user: store.get("user") || "Herr Müller",
     experts: [],
     machines: [],
+    lang: store.get("lang") || "",  // "" = auto-detect (German, English, ...)
   };
+
+  const LANGS = [["", "Auto"], ["de", "Deutsch"], ["en", "English"]];
+  function langChips() {
+    return `<div class="chips lang" role="group" aria-label="Spoken language">${LANGS.map(([v, l]) =>
+      `<button type="button" class="chip ${state.lang === v ? "on" : ""}" data-lang="${v}">${l}</button>`).join("")}</div>`;
+  }
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-lang]");
+    if (!b) return;
+    state.lang = b.dataset.lang;
+    store.set("lang", state.lang);
+    document.querySelectorAll("[data-lang]").forEach((x) => x.classList.toggle("on", x.dataset.lang === state.lang));
+  });
 
   const QUESTIONS = [
     "What was difficult today?",
@@ -325,6 +339,7 @@ const store = {
           <input type="text" id="machine" list="machineList" value="${esc(last)}" placeholder="e.g. CNC 3" autocomplete="off">
           <datalist id="machineList">${machineOpts.map((m) => `<option value="${esc(m)}">`).join("")}</datalist>
         </div>
+        <div><label class="field">I'm speaking</label>${langChips()}</div>
       </div>
       <div class="record-hero" id="hero">
         <div class="question-card" id="qcard">
@@ -403,7 +418,7 @@ const store = {
       form.append("author", state.user);
       const m = $("machine").value.trim();
       if (m) form.append("machine", m);
-      form.append("language", "de");
+      if (state.lang) form.append("language", state.lang);
       form.append("audio", blob, "shift." + ext);
       submit(form);
     }
@@ -530,6 +545,7 @@ const store = {
           <input type="text" id="mtitle" placeholder="e.g. Line 2 weekly" value="Line 2 weekly"></div>
         <div><label class="field" for="mpeople">Participants</label>
           <input type="text" id="mpeople" placeholder="Names, separated by commas" value="${esc(state.user)}"></div>
+        <div><label class="field">Language spoken</label>${langChips()}</div>
         <div class="consent">
           <label><input type="checkbox" id="consent">
             <span>Everyone in this meeting agrees to the recording.<br>
@@ -578,7 +594,7 @@ const store = {
       form.append("title", meta.title);
       form.append("participants", meta.people);
       form.append("consent", "true");
-      form.append("language", "de");
+      if (state.lang) form.append("language", state.lang);
       form.append("audio", blob, "meeting." + ext);
       meetingSubmit(form);
     });

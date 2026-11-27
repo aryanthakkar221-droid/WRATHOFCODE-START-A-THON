@@ -7,6 +7,7 @@ import io
 import json
 import logging
 import os
+import re
 import uuid
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
@@ -58,9 +59,24 @@ def _card_or_404(c, card_id: int) -> Dict[str, Any]:
     return card
 
 
+# What Whisper tends to "hear" in silence or noise. Never turn these into knowledge.
+_SILENCE = re.compile(
+    r"^(you|thank you\.?|thanks for watching!?|bye\.?|untertitel.*|vielen dank\.?|tschüss\.?|\W*)$", re.I)
+_TOO_SHORT = ("I couldn't hear a shift report. Please try again a bit closer to the microphone "
+              "and talk for at least a few seconds.")
+
+
+def _check_heard(transcript: str) -> None:
+    t = transcript.strip()
+    if _SILENCE.match(t) or len(re.findall(r"\w+", t)) < 4:
+        raise HTTPException(422, _TOO_SHORT)
+
+
 async def _text_from(text: Optional[str], audio: Optional[UploadFile], language: Optional[str]):
     """Returns (transcript, audio_path). Audio is kept only until the card is approved."""
     if text and text.strip():
+        if len(re.findall(r"\w+", text)) < 4:
+            raise HTTPException(422, "Please write a little more: what happened, and what did you do?")
         return text.strip(), None
     if audio is None:
         raise HTTPException(422, "Send either `text` or an `audio` file.")
@@ -71,6 +87,7 @@ async def _text_from(text: Optional[str], audio: Optional[UploadFile], language:
         raise HTTPException(501, str(e))
     except Exception as e:  # noqa: BLE001
         raise HTTPException(502, "Speech-to-text failed: %s" % e)
+    _check_heard(transcript)
     ext = os.path.splitext(audio.filename or "")[1] or ".webm"
     path = os.path.join(db.AUDIO_DIR, uuid.uuid4().hex + ext)
     with open(path, "wb") as f:
@@ -123,6 +140,10 @@ async def create_entry(
     with db.conn() as c:
         known = [r[0] for r in c.execute("SELECT DISTINCT machine FROM cards WHERE machine IS NOT NULL").fetchall()]
     structured = ai.structure_entry(transcript, machine, known)
+    if not any(structured.get(k) for k in ("problem", "solution", "warning")):
+        _delete_audio(audio_path)
+        raise HTTPException(422, "I heard you, but found no problem, fix or tip in it. "
+                                 "Try: what was difficult, what did you do, what should others watch out for?")
     with db.conn() as c:
         card_id = db.insert_card(c, {
             "author": author,
@@ -289,6 +310,7 @@ def open_questions(expert: Optional[str] = None) -> List[Dict[str, Any]]:
             known = {r["machine_id"] for r in c.execute(
                 "SELECT DISTINCT machine_id FROM cards WHERE author=?", (expert,)).fetchall()}
             rows = [r for r in rows if r["machine_id"] is None or r["machine_id"] in known]
+            rows.sort(key=lambda r: r["machine_id"] not in known)  # their machines first (stable: newest first)
     return rows
 
 
