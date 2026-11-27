@@ -42,6 +42,8 @@ flowchart LR
 | **2. Structure** | The AI turns the messy voice note into a card: problem → cause → solution → warning, tagged with machine, process, author and date. If a newer worker passes on an expert's tip, the card becomes "Tip from Herr Müller, shared by Ahmed" and only Herr Müller can approve it. If nobody could help, the question goes to the experts. |
 | **3. Find and learn** | A new employee asks in plain language ("packaging line jams, what do I do?") and gets the answer from real past entries, with who solved it and when. |
 | **4. Spot patterns** | The dashboard flags repeats and risks: "Packaging Machine: jam problem 4 times in the last 30 days", "Only Herr Müller has solved problems on Packaging Machine (retires in 6 months)." |
+| **Rewards** | Tokens reward tips that help, not how much you record: +5 when your card is approved, +10 each time a colleague says your fix worked. Nothing for drafts, for "Didn't work" or for rating your own card; one vote per person per card; max 30 a day. 10 tokens = 1 €, up to 50 € a month (tax-free limit). The Wallet shows the balance, this month's progress and a canteen voucher QR (demo only, no real payment). |
+| **Retired experts** | Herr Weber (38 years, retired 2025) still helps: his approved cards are marked "Retired 2025 · his know-how still helps" and Ask finds them. |
 | **5. Practise** | The **Fix-it Challenge** turns approved cards into a short game for new employees: a situation, 4 choices, what happens with each, and the expert's real tip. |
 
 ## Features

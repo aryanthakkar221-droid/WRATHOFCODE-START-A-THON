@@ -4,6 +4,7 @@ Run:  uvicorn app.main:app --reload   (from the backend/ folder)
 Docs: http://localhost:8000/docs
 """
 import io
+import sqlite3
 import json
 import logging
 import os
@@ -23,7 +24,7 @@ from pydantic import BaseModel
 
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
-from . import ai, alerts, db, seed, stt  # noqa: E402  (after .env so keys are visible)
+from . import tokens, ai, alerts, db, seed, stt  # noqa: E402  (after .env so keys are visible)
 
 logging.basicConfig(level=logging.INFO)
 
@@ -117,6 +118,28 @@ def reset_demo() -> Dict[str, Any]:
     if not ALLOW_RESET:
         raise HTTPException(403, "Reset is disabled")
     return {"seeded_cards": seed.seed(reset=True)}
+
+
+@app.get("/wallet/{person}", tags=["tokens"])
+def get_wallet(person: str) -> Dict[str, Any]:
+    """Token balance, this month's progress to the 50 EUR cap, recent earnings."""
+    with db.conn() as c:
+        return tokens.wallet(c, person)
+
+
+@app.post("/wallet/{person}/voucher", tags=["tokens"])
+def canteen_voucher(person: str) -> Dict[str, Any]:
+    """Demo canteen voucher (no real payment): a code plus a QR image."""
+    import secrets
+    import segno
+    with db.conn() as c:
+        w = tokens.wallet(c, person)
+    code = "KF-" + secrets.token_hex(3).upper()
+    buf = io.BytesIO()
+    segno.make("KNOWFLOW-CANTEEN:%s:%s:%.2fEUR" % (code, person, w["balance_eur"])).save(
+        buf, kind="svg", xmldecl=False, scale=6, border=2)
+    return {"code": code, "person": person, "eur": w["balance_eur"], "tokens": w["balance"],
+            "qr_svg": buf.getvalue().decode(), "demo": True}
 
 
 @app.get("/shift-plan", tags=["meta"])
@@ -271,7 +294,13 @@ def approve_card(card_id: int, body: Approve) -> Dict[str, Any]:
             "UPDATE cards SET status='approved', approved_by=?, approved_at=?, audio_path=NULL WHERE id=?",
             (body.expert, db.now_iso(), card_id),
         )
-        return db.get_card(c, card_id)
+        reward = None
+        if card["status"] != "approved":
+            reward = tokens.award(c, card["author"], tokens.APPROVED,
+                                  "Your card was approved: %s" % (card["problem"] or "")[:60], card_id)
+        out = db.get_card(c, card_id)
+        out["tokens"] = reward
+        return out
 
 
 @app.delete("/cards/{card_id}", tags=["cards"])
@@ -287,19 +316,35 @@ def reject_card(card_id: int) -> Dict[str, Any]:
 
 class Feedback(BaseModel):
     worked: bool
+    voter: Optional[str] = None  # who clicked; one vote per person per card
 
 
 @app.post("/cards/{card_id}/feedback", tags=["cards"])
 def card_feedback(card_id: int, body: Feedback) -> Dict[str, Any]:
-    """'Did this work?' Proven fixes rise; fixes that fail get flagged as outdated."""
+    """'Did this work?' Proven fixes rise; fixes that fail get flagged as outdated.
+    'Worked' from a colleague gives the author +10 tokens (not for your own card)."""
     with db.conn() as c:
-        _card_or_404(c, card_id)
+        card = _card_or_404(c, card_id)
+        reward = None
+        if body.voter:
+            try:
+                c.execute("INSERT INTO feedback_votes (card_id, voter, worked, date) VALUES (?,?,?,?)",
+                          (card_id, body.voter, int(body.worked), db.now_iso()))
+            except sqlite3.IntegrityError:
+                out = db.get_card(c, card_id)
+                out["already_voted"] = True
+                return out
+            if body.worked and body.voter != card["author"]:
+                reward = tokens.award(c, card["author"], tokens.WORKED,
+                                      "Your fix worked for %s" % body.voter, card_id)
         if body.worked:
             c.execute("UPDATE cards SET worked_count=worked_count+1, last_confirmed=? WHERE id=?",
                       (db.now_iso(), card_id))
         else:
             c.execute("UPDATE cards SET failed_count=failed_count+1 WHERE id=?", (card_id,))
-        return db.get_card(c, card_id)
+        out = db.get_card(c, card_id)
+        out["tokens"] = reward
+        return out
 
 
 # ------------------------------------------------------------------ ask

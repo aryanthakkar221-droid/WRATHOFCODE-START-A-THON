@@ -156,6 +156,22 @@ SHIFT_PLAN = [
     ("Lena Kowalski", "Machine 1", "early shift"),
 ]
 
+# Past token earnings so the wallets look real (days ago, person, tokens, reason).
+# Kept inside this month where possible so the monthly progress shows.
+TOKENS = [
+    (40, "Herr Müller", 5, "Your card was approved: Film jams on Monday morning"),
+    (20, "Herr Müller", 10, "Your fix worked for Ahmed"),
+    (16, "Herr Müller", 10, "Your fix worked for Lena Kowalski"),
+    (9, "Herr Müller", 5, "Your card was approved: Press restarted without checking the strip"),
+    (5, "Herr Müller", 10, "Your fix worked for Frau Schneider"),
+    (2, "Herr Müller", 10, "Your fix worked for Ahmed"),
+    (60, "Herr Weber", 5, "Your card was approved: Parts are not accurate"),
+    (25, "Herr Weber", 10, "Your fix worked for Ahmed"),
+    (11, "Herr Weber", 10, "Your fix worked for Lena Kowalski"),
+    (6, "Herr Weber", 10, "Your fix worked for Frau Schneider"),
+    (3, "Herr Weber", 10, "Your fix worked for Ahmed"),
+]
+
 OPEN_QUESTIONS = [
     ("The compressor shows a red oil light. What do I do?", "compressor", "Ahmed"),
 ]
@@ -170,6 +186,8 @@ def seed(reset: bool = False) -> int:
             c.execute("DELETE FROM open_questions")
             c.execute("DELETE FROM experts")
             c.execute("DELETE FROM shift_plan")
+            c.execute("DELETE FROM token_events")
+            c.execute("DELETE FROM feedback_votes")
         elif c.execute("SELECT COUNT(*) FROM cards").fetchone()[0]:
             c.executemany("INSERT OR IGNORE INTO shift_plan VALUES (?,?,?)", SHIFT_PLAN)
             return 0
@@ -191,6 +209,9 @@ def seed(reset: bool = False) -> int:
                 "worked_count": worked, "failed_count": failed,
                 "last_confirmed": _ago(max(days - 2, 0)) if worked else None,
             })
+        for days, person, amount, reason in TOKENS:
+            c.execute("INSERT INTO token_events (date, person, amount, reason) VALUES (?,?,?,?)",
+                      (_ago(days, 10), person, amount, reason))
         for q, mid, who in OPEN_QUESTIONS:
             c.execute("INSERT INTO open_questions (date, question, machine_id, asked_by) VALUES (?,?,?,?)",
                       (_ago(4), q, mid, who))

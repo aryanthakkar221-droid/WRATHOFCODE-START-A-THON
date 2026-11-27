@@ -216,3 +216,41 @@ def test_retired_expert_weber():
     assert len(mine) == 4 and all(c["worked_count"] and c["last_confirmed"] for c in mine)
     r = client.post("/ask", json={"question": "Press 2 parts are not accurate, what do I do?"}).json()
     assert any(s["author"] == "Herr Weber" for s in r["sources"]), r
+
+
+def _bal(name):
+    return client.get("/wallet/" + name).json()
+
+
+def test_tokens_rules():
+    client.post("/admin/reset-demo")
+    m0 = _bal("Herr Müller")
+    assert m0["balance"] == 50 and m0["monthly_cap_eur"] == 50 and m0["events"]
+    card = next(c for c in client.get("/entries", params={"machine": "packaging-machine", "status": "approved"}).json()
+                if c["author"] == "Herr Müller")
+    # Ahmed: Worked -> Müller +10
+    r = client.post("/cards/%d/feedback" % card["id"], json={"worked": True, "voter": "Ahmed"}).json()
+    assert r["tokens"]["amount"] == 10 and r["tokens"]["person"] == "Herr Müller"
+    assert r["tokens"]["reason"] == "Your fix worked for Ahmed"
+    # same person again: no second vote, no tokens
+    again = client.post("/cards/%d/feedback" % card["id"], json={"worked": True, "voter": "Ahmed"}).json()
+    assert again.get("already_voted") and again["worked_count"] == r["worked_count"]
+    # own card: vote counts, no tokens
+    own = client.post("/cards/%d/feedback" % card["id"], json={"worked": True, "voter": "Herr Müller"}).json()
+    assert own["tokens"] is None
+    # didn't work: no tokens
+    no = client.post("/cards/%d/feedback" % card["id"], json={"worked": False, "voter": "Lena Kowalski"}).json()
+    assert no["tokens"] is None
+    # daily cap 30 (10 already today)
+    for v in ("Frau Schneider", "Herr Weber", "Gast 1", "Gast 2"):
+        client.post("/cards/%d/feedback" % card["id"], json={"worked": True, "voter": v})
+    w = _bal("Herr Müller")
+    assert w["today"] == 30 and w["balance"] == 80
+    # recording gives nothing; approval gives +5
+    e = client.post("/entries", data={"author": "Lena Kowalski", "machine": "Machine 1",
+        "text": "Coolant pump was loud. I cleaned the filter and it was quiet again."}).json()["card"]
+    assert _bal("Lena Kowalski")["balance"] == 0
+    a = client.post("/cards/%d/approve" % e["id"], json={"expert": "Lena Kowalski"}).json()
+    assert a["tokens"]["amount"] == 5 and _bal("Lena Kowalski")["balance"] == 5
+    v = client.post("/wallet/Herr%20Weber/voucher").json()
+    assert v["demo"] and v["code"].startswith("KF-") and "<svg" in v["qr_svg"]

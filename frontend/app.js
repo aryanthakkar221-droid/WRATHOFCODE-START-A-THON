@@ -198,9 +198,11 @@ const store = {
       const id = fb.dataset.id;
       fb.parentElement.querySelectorAll("button").forEach((b) => (b.disabled = true));
       try {
-        const c = await api(`/cards/${id}/feedback`, { method: "POST", json: { worked: fb.dataset.fb === "1" } });
+        const c = await api(`/cards/${id}/feedback`, { method: "POST", json: { worked: fb.dataset.fb === "1", voter: state.user } });
         replaceCard(c, { feedback: false, titleFromProblem: !!fb.closest("[data-title]") });
-        toast(fb.dataset.fb === "1" ? "Thanks! Marked as proven fix." : "Thanks. The expert will see it didn't work.");
+        if (c.already_voted) toast("You already rated this tip.");
+        else if (c.tokens) rewardToast(c.tokens);
+        else toast(fb.dataset.fb === "1" ? "Thanks! Marked as proven fix." : "Thanks. The expert will see it didn't work.");
       } catch (err) { toast(err.message); }
       return;
     }
@@ -210,7 +212,8 @@ const store = {
       try {
         const c = await api(`/cards/${ap.dataset.approve}/approve`, { method: "POST", json: { expert: state.user } });
         replaceCard(c, { showTranscript: false });
-        toast("Approved. It's live, and the recording is deleted.");
+        if (c.tokens) rewardToast(c.tokens, "Approved. It's live, and the recording is deleted.");
+        else toast("Approved. It's live, and the recording is deleted.");
         refreshMachines();
       } catch (err) { toast(err.message); ap.disabled = false; }
       return;
@@ -272,7 +275,23 @@ const store = {
 
   // ------------------------------------------------------------ user picker
   function renderWho() {
-    document.getElementById("who").innerHTML = `${avatar(state.user, "sm")}<span>${esc(state.user)}</span>`;
+    document.getElementById("who").innerHTML = `${avatar(state.user, "sm")}<span>${esc(state.user)}</span>` +
+      (state.balance != null ? `<span class="who-bal" id="whoBal" title="Your tokens">🪙 ${state.balance}</span>` : "");
+  }
+  async function refreshBalance() {
+    try { state.balance = (await api("/wallet/" + encodeURIComponent(state.user))).balance; } catch (e) { state.balance = null; }
+    renderWho();
+  }
+  // "+10 🪙 Herr Müller: your fix worked for Ahmed" slides in from the top.
+  function rewardToast(t, extra) {
+    const who = t.person === state.user ? "" : `${t.person}: `;
+    const reason = who ? t.reason.replace(/^Your/, "your") : t.reason;
+    toastEl.classList.add("reward");
+    toast(`+${t.amount} 🪙 ${who}${reason}${extra ? " · " + extra : ""}`);
+    setTimeout(() => toastEl.classList.remove("reward"), 2800);
+    refreshBalance();
+    const b = document.getElementById("whoBal");
+    if (b) { b.classList.remove("pop"); void b.offsetWidth; b.classList.add("pop"); }
   }
   document.getElementById("who").addEventListener("click", async () => {
     if (!state.experts.length) state.experts = await api("/experts").catch(() => []);
@@ -305,7 +324,9 @@ const store = {
   function setUser(name) {
     state.user = name;
     store.set("user", name);
+    state.balance = null;
     renderWho();
+    refreshBalance();
     route();
   }
 
@@ -898,6 +919,46 @@ const store = {
     });
   }
 
+  // ------------------------------------------------------------ screen: wallet
+  async function screenWallet() {
+    render(`<h1>Wallet</h1><div class="skeleton" style="height:140px"></div>`);
+    let w;
+    try { w = await api("/wallet/" + encodeURIComponent(state.user)); }
+    catch (e) { return render(`<div class="empty"><span class="ei">😕</span>${esc(e.message)}</div>`); }
+    state.balance = w.balance; renderWho();
+    const pct = Math.min(100, Math.round((w.month_eur / w.monthly_cap_eur) * 100));
+    const eur = (n) => n.toFixed(2).replace(".", ",") + " €";
+    render(`
+      <h1>Wallet</h1>
+      <p class="sub">Tokens for knowledge that helps others. ${w.tokens_per_eur} tokens = 1 €.</p>
+      <section class="wallet-hero">
+        <div class="wallet-bal"><span class="coin">🪙</span><b id="walletBal">${w.balance}</b><small>tokens</small></div>
+        <div class="wallet-eur">= ${eur(w.balance_eur)}</div>
+      </section>
+      <section class="panel">
+        <div class="row-between"><b>This month</b><span class="muted">${eur(w.month_eur)} of ${w.monthly_cap_eur} €</span></div>
+        <div class="confidence wallet-bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><i style="width:${pct}%"></i></div>
+        <small class="muted">Up to ${w.monthly_cap_eur} € a month (tax-free limit) · max ${w.daily_cap} tokens a day · today: ${w.today}</small>
+      </section>
+      <button class="btn primary block" id="redeem" type="button">Redeem in canteen</button>
+      <h2>Recent earnings</h2>
+      ${w.events.length ? `<div class="earn-list">${w.events.map((e) => `
+        <div class="earn"><b class="earn-amt">+${e.amount}</b><span class="grow">${esc(e.reason)}</span><small class="muted">${fmtDate(e.date)}</small></div>`).join("")}</div>`
+        : `<div class="empty"><span class="ei">🪙</span>No tokens yet. When your card is approved you get 5, and 10 each time your fix works for a colleague.</div>`}
+      <p class="small muted" style="margin-top:14px">Tokens reward tips that help, not how much you record. No tokens for drafts, for "Didn't work", or for rating your own card.</p>`);
+    document.getElementById("redeem").addEventListener("click", async () => {
+      try {
+        const v = await api("/wallet/" + encodeURIComponent(state.user) + "/voucher", { method: "POST" });
+        modal.innerHTML = `
+          <h2>Canteen voucher</h2>
+          <p class="sub">Show this at the canteen till. Demo only, no real payment.</p>
+          <div class="voucher">${v.qr_svg}<b>${eur(v.eur)}</b><small class="muted">${esc(v.person)} · ${esc(v.code)}</small></div>
+          <form method="dialog"><button class="btn primary block">Done</button></form>`;
+        modal.showModal();
+      } catch (e) { toast(e.message); }
+    });
+  }
+
   // ------------------------------------------------------------ router
   function route() {
     if (activeRecorder) { activeRecorder.cancel(); activeRecorder = null; }
@@ -908,6 +969,7 @@ const store = {
       case "ask": return screenAsk(arg ? decodeURIComponent(arg) : "");
       case "meetings": return screenMeetings();
       case "dashboard": return screenDashboard();
+      case "wallet": return screenWallet();
       case "m": return screenMachine(decodeURIComponent(arg || ""));
       case "sign": return screenSign(decodeURIComponent(arg || ""));
       case "card": return screenCard(arg);
@@ -918,6 +980,7 @@ const store = {
 
   window.addEventListener("hashchange", route);
   renderWho();
+  refreshBalance();
   Promise.all([refreshMachines(), api("/experts").then((x) => (state.experts = x)).catch(() => {})]).finally(route);
 })();
 

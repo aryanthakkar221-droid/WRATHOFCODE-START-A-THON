@@ -53,6 +53,21 @@ CREATE TABLE IF NOT EXISTS meetings (
     transcript TEXT,
     result TEXT NOT NULL DEFAULT '{}'
 );
+CREATE TABLE IF NOT EXISTS token_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    date TEXT NOT NULL,
+    person TEXT NOT NULL,
+    amount INTEGER NOT NULL,
+    reason TEXT NOT NULL,
+    card_id INTEGER
+);
+CREATE TABLE IF NOT EXISTS feedback_votes (
+    card_id INTEGER NOT NULL,
+    voter TEXT NOT NULL,
+    worked INTEGER NOT NULL,
+    date TEXT NOT NULL,
+    PRIMARY KEY (card_id, voter)
+);
 CREATE TABLE IF NOT EXISTS shift_plan (
     name TEXT PRIMARY KEY,                     -- person
     machine TEXT NOT NULL,                     -- where they work this shift
