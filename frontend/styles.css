@@ -677,3 +677,6 @@ body.login-mode::before {
 #tabs a { position: relative; }
 #tabs a.has-dot::after { content: ""; position: absolute; top: 6px; left: calc(50% + 8px); width: 9px; height: 9px; border-radius: 50%;
   background: #D92D20; box-shadow: 0 0 0 2px var(--surface); }
+
+/* ---------- brand logo (KF mark) ---------- */
+.logo-img { height: 30px; width: auto; flex: none; display: block; }

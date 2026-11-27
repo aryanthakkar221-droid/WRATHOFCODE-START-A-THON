@@ -1281,7 +1281,7 @@ const store = {
             <canvas id="dotmap"></canvas>
             <div class="login-art-text">
               <span class="login-mark">${ic("arrow-right", "lg")}</span>
-              <h2>KnowFlow</h2>
+              <img class="logo-img" src="logo.png" alt="" style="height:44px;margin:0 auto 8px"><h2>KnowFlow</h2>
               <p>Sign in to share what you fixed today and find what your colleagues already know.</p>
             </div>
           </div>
