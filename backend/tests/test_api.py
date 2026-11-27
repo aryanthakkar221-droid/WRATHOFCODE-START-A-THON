@@ -340,3 +340,14 @@ def test_only_experts_can_approve_and_inbox():
 
 def test_practice_result_is_anonymous_counts():
     assert client.post("/practice/result", json={"card_id": 1, "correct": False}).json() == {"ok": True}
+
+
+def test_problem_is_a_sentence_and_no_duplicate_alerts():
+    text = ("The packaging machine jammed again this Monday morning at the start of the shift. The problem was the "
+            "film: the hall gets cold over the weekend, so the film becomes stiff and jams. I let the machine warm up "
+            "for 10 minutes at low speed, then I checked the film roll tension and adjusted it. After that it ran fine. "
+            "Watch out: don't start the machine at full speed when it's cold, or it jams again.")
+    card = client.post("/entries", data={"author": "Herr Müller", "text": text}).json()["card"]
+    assert len(card["problem"].split()) >= 4
+    rec = [a for a in client.get("/alerts").json() if a["type"] == "recurring_problem" and a["machine_id"] == "packaging-machine"]
+    assert len(rec) == 1, [a["message"] for a in rec]

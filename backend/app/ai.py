@@ -225,7 +225,10 @@ def _nullable(t: str) -> Dict[str, Any]:
 STRUCTURE_SYSTEM = (
     "You are an assistant for a factory shift log (Schichtbuch). Turn this worker's spoken "
     "shift report into a knowledge card. Keep the worker's practical tips and reasons (the "
-    "'why'). If something is not mentioned, use null. Do not invent facts. Write in clear, "
+    "'why'). If something is not mentioned, use null. Do not invent facts. problem is the card's "
+    "headline: ALWAYS one full, clear sentence that says what happened, on which part and when if "
+    "said (e.g. 'Film jams at the start of the shift on Monday morning.'), never a single word or "
+    "label like 'jam'. Write in clear, "
     "short sentences, in the same language the worker used. If the report contains no real "
     "work problem, fix or tip (e.g. it is empty, noise, or small talk), return null for "
     "problem, cause, solution and warning and an empty tags list. kind is 'mistake' if the report "
@@ -246,7 +249,9 @@ CARD_SCHEMA = {
         "machine": _nullable("string"),
         "process": _nullable("string"),
         "kind": {"type": "string", "enum": ["fix", "mistake"]},
-        "problem": _nullable("string"),
+        "problem": dict(_nullable("string"), description=(
+            "Card headline: one full sentence of at least 5 words saying what went wrong, on which part and "
+            "when, e.g. 'Film jams at the start of the shift on Monday morning.' Never one word like 'jam'.")),
         "cause": _nullable("string"),
         "solution": _nullable("string"),
         "warning": _nullable("string"),
@@ -280,7 +285,21 @@ def structure_entry(transcript: str, machine_hint: Optional[str] = None,
     if machine_hint:
         out["machine"] = machine_hint
     out["tags"] = [t.lower().strip() for t in (out.get("tags") or []) if t.strip()][:4]
+    out["problem"] = _sentence_problem(out.get("problem"), transcript)
     return out
+
+
+def _sentence_problem(problem: Optional[str], transcript: str) -> Optional[str]:
+    """Safety net: the headline must be a full sentence, never a single word like 'jam'."""
+    if not problem or len(problem.split()) >= 4:
+        return problem
+    # the report's opening sentence usually says what happened
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", transcript or "") if len(s.split()) >= 4]
+    hit = sentences[0] if sentences else None
+    if not hit:
+        return problem
+    hit = hit.rstrip(".!?") + "."
+    return hit[0].upper() + hit[1:]
 
 
 _CAUSE_WORDS = ("because", "weil", "cause", "ursache", "due to", "da ")

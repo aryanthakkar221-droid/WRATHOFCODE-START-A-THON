@@ -21,12 +21,14 @@ def compute_alerts(cards: List[Dict[str, Any]], experts: Dict[str, Dict[str, Any
         if c.get("machine_id") and c["source"] == "shift" and _dt(c["date"]) >= since:
             for t in c["tags"]:
                 by_key[(c["machine_id"], t)].append(c)
-    seen = set()
+    covered = defaultdict(set)  # machine -> card ids already in a recurring alert
     for (mid, tag), group in sorted(by_key.items(), key=lambda kv: -len(kv[1])):
         ids = frozenset(c["id"] for c in group)
-        if len(group) < RECURRING_MIN or ids in seen:
+        # one alert per machine + problem: a tag group that is mostly the same cards
+        # (e.g. 'cold' inside the 'jam' cards) is the same problem, not a new alert
+        if len(group) < RECURRING_MIN or 2 * len(ids & covered[mid]) >= len(ids):
             continue
-        seen.add(ids)
+        covered[mid] |= ids
         alerts.append({
             "type": "recurring_problem",
             "severity": "high" if len(group) >= 4 else "medium",
