@@ -137,3 +137,17 @@ def test_machine_link_in_browser_opens_app_page():
     r = client.get("/machine/Packaging Machine", headers={"accept": "text/html"}, follow_redirects=False)
     assert r.status_code == 302 and r.headers["location"] == "/#/m/packaging-machine"
     assert client.get("/machine/packaging-machine").json()["machine"] == "Packaging Machine"
+
+
+def test_fix_it_challenge_offline():
+    g = client.post("/challenge", json={"machine": "Packaging Machine"}).json()
+    assert g["machine"] == "Packaging Machine" and g["expert"] == "Herr Müller"
+    assert len(g["options"]) == 4 and sum(o["correct"] for o in g["options"]) == 1
+    right = next(o for o in g["options"] if o["correct"])
+    assert "warm" in right["text"].lower()
+    assert g["situation"] and g["explanation"] and g["badge"]
+    assert "warm up for 10 minutes" in g["expert_tip"].lower()  # his real words, not AI text
+    other = client.post("/challenge", json={"exclude": [g["card_id"]]}).json()
+    assert other["card_id"] != g["card_id"]
+    draft = client.get("/entries", params={"status": "draft"}).json()[0]
+    assert client.post("/challenge", json={"card_id": draft["id"]}).status_code == 400

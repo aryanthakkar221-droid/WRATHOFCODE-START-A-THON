@@ -7,6 +7,7 @@ import io
 import json
 import logging
 import os
+import random
 import re
 import uuid
 from contextlib import asynccontextmanager
@@ -405,6 +406,51 @@ def stats() -> Dict[str, Any]:
             "open_questions": one("SELECT COUNT(*) FROM open_questions WHERE resolved_card_id IS NULL"),
             "meetings": one("SELECT COUNT(*) FROM meetings"),
         }
+
+
+# ------------------------------------------------------------------ fix-it challenge
+
+_challenge_cache = {}  # type: Dict[int, Dict[str, Any]]
+
+
+class ChallengeReq(BaseModel):
+    machine: Optional[str] = None
+    card_id: Optional[int] = None
+    exclude: List[int] = []
+    fresh: bool = False
+
+
+@app.post("/challenge", tags=["learn"])
+def challenge(body: ChallengeReq) -> Dict[str, Any]:
+    """Fix-it Challenge: turns an approved card into a short game (situation, 4 choices,
+    what happens with each, the expert's explanation). Nothing about the player is stored."""
+    with db.conn() as c:
+        if body.card_id:
+            card = _card_or_404(c, body.card_id)
+        else:
+            mid = db.slugify(body.machine) if body.machine else None
+            cards = [x for x in db.list_cards(c, mid, "approved")
+                     if x["solution"] and x["kind"] in ("fix", "mistake") and x["id"] not in body.exclude]
+            if not cards:
+                cards = [x for x in db.list_cards(c, mid, "approved") if x["solution"]]
+            if not cards:
+                raise HTTPException(404, "No approved tips to build a challenge from yet")
+            # best proven fix first: the one most people said worked
+            card = max(cards, key=lambda x: (x["worked_count"] - x["failed_count"], x["date"]))
+    if card["status"] != "approved":
+        raise HTTPException(400, "Only approved cards can become a challenge")
+    game = None if body.fresh else _challenge_cache.get(card["id"])
+    if game is None:
+        game = ai.make_challenge(card)
+        _challenge_cache[card["id"]] = game
+    options = [dict(o) for o in game["options"]]
+    random.shuffle(options)
+    # The expert's own words come only from their approved card, never from the AI.
+    tip = " ".join(x for x in [card["solution"], ("Watch out: " + card["warning"]) if card["warning"] else ""] if x)
+    return {**game, "options": options, "card_id": card["id"], "machine": card["machine"],
+            "machine_id": card["machine_id"], "expert": card["author"],
+            "expert_years": card["author_years_experience"], "expert_tip": tip,
+            "tip_date": card["date"], "approved_by": card["approved_by"]}
 
 
 # ------------------------------------------------------------------ meetings

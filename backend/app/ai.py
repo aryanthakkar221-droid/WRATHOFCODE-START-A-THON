@@ -298,3 +298,78 @@ def extract_meeting(transcript: str) -> Dict[str, Any]:
         "lessons_learned": [s for s in sents if has(s, "lesson", "learned", "next time", "gelernt", "nächstes mal")],
         "action_items": [{"task": s, "owner": None, "due": None} for s in sents if has(s, "will ", "todo", "to do", "bis ")],
     }
+
+
+# ---------------------------------------------------------------- fix-it challenge
+
+CHALLENGE_SYSTEM = (
+    "You turn one expert knowledge card from a factory into a short training game for a new "
+    "employee. Use simple, everyday words, no technical jargon. Write: a short situation "
+    "(2-3 sentences, present tense, 'you' form, at the machine), a question, and exactly 4 "
+    "possible next steps. Exactly one is right: it must follow the expert's solution. The 3 "
+    "wrong ones must sound tempting (things a beginner would really try). For every option "
+    "write what happens next (1 sentence). Then 'explanation': why the right step works, in "
+    "neutral third person (1-2 sentences). Never write as the expert, never use 'I', and "
+    "never invent quotes. Then a 2-4 word badge name. "
+    "Only use facts from the card. Write in English."
+)
+
+CHALLENGE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "situation": {"type": "string"},
+        "question": {"type": "string"},
+        "options": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string"},
+                    "correct": {"type": "boolean"},
+                    "consequence": {"type": "string"},
+                },
+                "required": ["text", "correct", "consequence"],
+                "additionalProperties": False,
+            },
+        },
+        "explanation": {"type": "string"},
+        "badge": {"type": "string"},
+    },
+    "required": ["situation", "question", "options", "explanation", "badge"],
+    "additionalProperties": False,
+}
+
+
+def make_challenge(card: Dict[str, Any]) -> Dict[str, Any]:
+    payload = json.dumps(_card_brief(card), ensure_ascii=False)
+    out = _call_json(CHALLENGE_SYSTEM, "Knowledge card:\n" + payload, CHALLENGE_SCHEMA, "challenge")
+    if out is not None:
+        right = [o for o in out["options"] if o["correct"]]
+        if len(right) == 1 and 3 <= len(out["options"]) <= 4:
+            return out
+        log.warning("Challenge had %d right answers, using offline version", len(right))
+    return _offline_challenge(card)
+
+
+def _offline_challenge(card: Dict[str, Any]) -> Dict[str, Any]:
+    machine = card.get("machine") or "the machine"
+    return {
+        "situation": "You are at the %s. %s" % (machine, card.get("problem") or "Something is wrong."),
+        "question": "What do you do first?",
+        "options": [
+            {"text": card.get("solution") or "Ask an expert.", "correct": True,
+             "consequence": "It works, and the machine runs normally again."},
+            {"text": "Restart it at full speed and hope it goes away.", "correct": False,
+             "consequence": card.get("warning") or "The same problem comes back, and it may get worse."},
+            {"text": "Keep pressing reset until it runs.", "correct": False,
+             "consequence": "It stops again a few minutes later. The cause is still there."},
+            {"text": "Leave it and wait for the next shift.", "correct": False,
+             "consequence": "Production stands still, and the next shift has the same problem."},
+        ],
+        "explanation": " ".join(x for x in [
+            ("The cause: %s" % card["cause"]) if card.get("cause") else "",
+            card.get("solution") or "",
+            ("Watch out: %s" % card["warning"]) if card.get("warning") else "",
+        ] if x),
+        "badge": "%s helper" % machine,
+    }

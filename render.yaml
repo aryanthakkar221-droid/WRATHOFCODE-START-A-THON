@@ -1,0 +1,19 @@
+# One-click deploy on Render: New + > Blueprint > pick this repo.
+# Then set OPENAI_API_KEY in the service's Environment tab (never commit it).
+services:
+  - type: web
+    name: knowflow
+    runtime: python
+    plan: free
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini
+      - key: KNOWFLOW_SEED
+        value: "1"

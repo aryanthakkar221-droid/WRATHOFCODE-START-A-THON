@@ -303,3 +303,44 @@ html, body { overflow-x: hidden; }
 main, .kcard, .answer, .alert, .stat, .risk, .list-item { min-width: 0; overflow-wrap: anywhere; }
 /* keep focused/scrolled-to elements clear of the sticky header and the bottom tab bar */
 html { scroll-padding-top: 80px; scroll-padding-bottom: calc(var(--tabs-h) + 24px); }
+
+/* ---------- fix-it challenge ---------- */
+.game-hero {
+  background: linear-gradient(135deg, #2f6690, #3f7d20); color: #fff; border-radius: var(--radius);
+  padding: 18px 20px; margin-bottom: 14px;
+}
+.game-hero small { opacity: .85; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; font-size: 12px; }
+.game-hero p { margin: 6px 0 0; font-size: 19px; line-height: 1.4; font-weight: 600; }
+.game-q { font-size: 21px; font-weight: 750; margin: 6px 0 12px; }
+.options { display: grid; gap: 10px; }
+.option {
+  text-align: left; width: 100%; min-height: 64px; padding: 14px 16px; border-radius: 16px;
+  border: 2px solid var(--line); background: var(--surface); font-size: 17px; font-weight: 600;
+  cursor: pointer; transition: border-color .2s, background .2s, transform .08s; display: flex; gap: 12px; align-items: flex-start;
+}
+.option:active { transform: scale(.98); }
+.option .letter {
+  flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center;
+  background: #f1ede6; color: var(--muted); font-weight: 800; font-size: 15px;
+}
+.option .consequence { display: block; font-weight: 500; font-size: 15px; margin-top: 6px; color: var(--muted); }
+.options.done .option { cursor: default; }
+.option.right { border-color: var(--accent-2); background: var(--accent-soft); }
+.option.right .letter { background: var(--accent); color: #fff; }
+.option.wrong { border-color: #f0a79e; background: var(--danger-soft); }
+.option.wrong .letter { background: var(--danger); color: #fff; }
+.option.dim { opacity: .55; }
+.explain {
+  margin-top: 14px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 16px; box-shadow: var(--shadow); animation: slideIn .35s cubic-bezier(.2, .8, .2, 1) both;
+}
+.explain .who-says { display: flex; gap: 10px; align-items: center; font-weight: 750; margin-bottom: 8px; }
+.explain blockquote { margin: 0; font-size: 17px; line-height: 1.5; }
+.badge-earned {
+  margin-top: 14px; text-align: center; padding: 18px; border-radius: var(--radius);
+  background: linear-gradient(135deg, #fff7e0, #fdecc8); border: 1px solid #f3d68b;
+  animation: pop .5s cubic-bezier(.2, 1.4, .4, 1) both;
+}
+.badge-earned .medal { font-size: 46px; display: block; }
+.badge-earned b { font-size: 19px; }
+@keyframes pop { from { opacity: 0; transform: scale(.7); } to { opacity: 1; transform: none; } }

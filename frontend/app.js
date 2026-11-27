@@ -486,6 +486,7 @@ const store = {
         <input type="search" id="q" placeholder="e.g. packaging line jams, what do I do?" autocomplete="off" enterkeyhint="search">
         <button class="btn primary" aria-label="Ask">Ask</button>
       </form>
+      <a class="btn block" href="#/challenge" style="margin-top:12px">🎮 New here? Play the Fix-it Challenge</a>
       <div class="chips" style="margin-top:12px">${SUGGESTIONS.map((s) => `<button class="chip" type="button" data-s="${esc(s)}">${esc(s)}</button>`).join("")}</div>
       <div id="answer"></div>`);
     const q = document.getElementById("q");
@@ -748,7 +749,10 @@ const store = {
           <p>${m.cards.length} tips from ${esc(m.experts.join(", "))}</p>
         </div>
         ${m.alerts.map((a) => `<div class="alert ${a.severity}" style="margin-bottom:10px"><span class="ai">${a.type === "recurring_problem" ? "🔁" : a.type === "knowledge_risk" ? "👤" : "👎"}</span><span>${esc(a.message)}</span></div>`).join("")}
-        <a class="btn block" href="#/ask" style="margin-bottom:14px">🔎 Ask a question about this machine</a>
+        <div class="row" style="margin-bottom:14px">
+          <a class="btn primary grow" href="#/challenge/${esc(m.machine_id)}">🎮 Fix-it Challenge</a>
+          <a class="btn grow" href="#/ask">🔎 Ask</a>
+        </div>
         <div class="stack" data-title>${m.cards.map((c) => cardHTML(c, { feedback: true, titleFromProblem: true })).join("")}</div>`);
     } catch (e) {
       render(`<div class="empty"><span class="ei">⚙️</span>${esc(e.message)}<br><br><a class="btn" href="#/record">Log the first entry</a></div>`);
@@ -777,6 +781,71 @@ const store = {
     } catch (e) { render(`<div class="empty">${esc(e.message)}</div>`); }
   }
 
+  // ------------------------------------------------------------ screen: fix-it challenge
+  // A tiny training game built from a real expert card. Nothing about the player is stored.
+  let lastChallenge = null;
+
+  async function screenChallenge(machine, opts = {}) {
+    render(`
+      <div class="game-hero"><small>🎮 Fix-it Challenge</small><p>Can you fix it like the experts?</p></div>
+      <div class="thinking"><div class="spinner"></div><b>AI is building your challenge…</b></div>`);
+    let g;
+    try {
+      g = await api("/challenge", { method: "POST", json: {
+        machine: machine || undefined,
+        exclude: opts.exclude || [],
+      } });
+    } catch (e) {
+      return render(`<div class="empty"><span class="ei">🎮</span>${esc(e.message)}</div>`);
+    }
+    lastChallenge = g;
+    const L = "ABCD";
+    render(`
+      <div class="game-hero">
+        <small>🎮 Fix-it Challenge · ${esc(g.machine || "")}</small>
+        <p>${esc(g.situation)}</p>
+      </div>
+      <div class="game-q">${esc(g.question)}</div>
+      <div class="options" id="opts">${g.options.map((o, i) => `
+        <button class="option" type="button" data-i="${i}"><span class="letter">${L[i]}</span>
+          <span>${esc(o.text)}<span class="consequence" hidden>${o.correct ? "✓ " : "✗ "}${esc(o.consequence)}</span></span>
+        </button>`).join("")}</div>
+      <div id="after"></div>`);
+    const box = document.getElementById("opts");
+    box.addEventListener("click", (e) => {
+      const b = e.target.closest(".option");
+      if (!b || box.classList.contains("done")) return;
+      box.classList.add("done");
+      const pick = g.options[+b.dataset.i];
+      box.querySelectorAll(".option").forEach((el) => {
+        const o = g.options[+el.dataset.i];
+        if (o.correct) el.classList.add("right");
+        else if (el === b) el.classList.add("wrong");
+        else el.classList.add("dim");
+        if (o.correct || el === b) el.querySelector(".consequence").hidden = false;
+      });
+      document.getElementById("after").innerHTML = `
+        <div class="explain">
+          <div class="who-says">${avatar(g.expert)} <span>${esc(g.expert)}'s approved tip${g.expert_years ? ` <span class="muted small" style="font-weight:500">· ${g.expert_years} years</span>` : ""}</span></div>
+          <blockquote>“${esc(g.expert_tip)}”</blockquote>
+          <div class="small muted" style="margin-top:6px">From ${esc(g.expert)}'s card, ${fmtDate(g.tip_date)} · approved by ${esc(g.approved_by || g.expert)}</div>
+          <div style="margin-top:12px;padding-top:12px;border-top:1px dashed var(--line)"><b>Why it works:</b> ${esc(g.explanation)}</div>
+        </div>
+        ${pick.correct ? `
+        <div class="badge-earned"><span class="medal">🏅</span><b>${esc(g.badge)}</b><br>
+          <span class="small muted">You know what ${esc(g.expert)} knows about the ${esc(g.machine || "machine")}.</span></div>` : `
+        <div class="answer none" style="margin-top:14px"><b>Not quite, and that's how we learn.</b><br>
+          <span class="small">Now you know the trick. Try another one!</span></div>`}
+        <div class="row" style="margin-top:14px">
+          <button class="btn primary grow" id="nextGame">🎮 Another challenge</button>
+          <a class="btn grow" href="#/m/${esc(g.machine_id || "")}">See all tips</a>
+        </div>`;
+      document.getElementById("after").scrollIntoView({ behavior: "smooth", block: "start" });
+      document.getElementById("nextGame").addEventListener("click", () =>
+        screenChallenge("", { exclude: [g.card_id] }));
+    });
+  }
+
   // ------------------------------------------------------------ router
   function route() {
     if (activeRecorder) { activeRecorder.cancel(); activeRecorder = null; }
@@ -790,6 +859,7 @@ const store = {
       case "m": return screenMachine(decodeURIComponent(arg || ""));
       case "sign": return screenSign(decodeURIComponent(arg || ""));
       case "card": return screenCard(arg);
+      case "challenge": return screenChallenge(arg ? decodeURIComponent(arg) : "");
       default: return screenRecord();
     }
   }
