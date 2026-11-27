@@ -303,11 +303,12 @@ const store = {
     if (!state.experts.length) state.experts = await api("/experts").catch(() => []);
     modal.innerHTML = `
       <h2>Who is using KnowFlow?</h2>
+      ${(() => { const me = state.experts.find((x) => x.name === state.user); return `<p class="sub">Signed in as <b>${esc(state.user)}</b>${me && me.email ? ` · ${esc(me.email)}` : ""}</p>`; })()}
       <p class="sub">Your name goes on the knowledge you share.</p>
       <div class="who-list">
         ${state.experts.map((x) => `
           <button type="button" data-name="${esc(x.name)}" class="${x.name === state.user ? "on" : ""}">
-            ${avatar(x.name)}<span><b>${esc(x.name)}</b><br><small class="muted">${x.years_experience} years experience${x.retires_in_months != null ? " · retires in " + x.retires_in_months + " months" : ""}</small></span>
+            ${avatar(x.name)}<span><b>${esc(x.name)}</b><br>${x.email ? `<small class="muted">${esc(x.email)}</small><br>` : ""}<small class="muted">${x.years_experience} years experience${x.retires_in_months != null ? " · retires in " + x.retires_in_months + " months" : ""}</small></span>
           </button>`).join("")}
       </div>
       <form method="dialog" class="row" style="margin-top:12px">
@@ -329,6 +330,7 @@ const store = {
     state.balance = null;
     renderWho();
     refreshBalance();
+    refreshInviteDot();
     route();
   }
 
@@ -673,6 +675,36 @@ const store = {
     loadPendingConsent();
   }
 
+  // Meeting invites for the selected person (top of Dashboard) + red dot on the Dashboard tab.
+  async function refreshInviteDot() {
+    let n = 0;
+    try { n = (await api("/meetings/consent?pending_for=" + encodeURIComponent(state.user))).length; } catch (_) {}
+    const t = document.querySelector('#tabs a[data-tab="dashboard"]');
+    if (t) t.classList.toggle("has-dot", n > 0);
+    return n;
+  }
+  async function loadInvites() {
+    const el = document.getElementById("invites");
+    if (!el) return;
+    let list = [];
+    try { list = await api("/meetings/consent?pending_for=" + encodeURIComponent(state.user)); } catch (_) {}
+    refreshInviteDot();
+    el.innerHTML = list.map((c) => `
+      <div class="loop-note invite" style="margin-bottom:14px">${ic("mail")}<span class="grow"><b>${esc(c.organiser)} invited you to “${esc(c.title)}”. Agree to be recorded?</b><br>
+        <span class="small muted">Participants: ${esc(c.participants.join(", "))}</span>
+        <span class="row" style="margin-top:10px">
+          <button class="btn small primary" data-inv-yes="${c.id}" type="button">${ic("check")}I agree</button>
+          <button class="btn small" data-inv-no="${c.id}" type="button">Decline</button></span></span></div>`).join("");
+    el.querySelectorAll("[data-inv-yes],[data-inv-no]").forEach((b) => b.addEventListener("click", async () => {
+      const yes = !!b.dataset.invYes;
+      try {
+        await api(`/meetings/consent/${b.dataset.invYes || b.dataset.invNo}/answer`, { method: "POST", json: { name: state.user, agree: yes, by: state.user } });
+        toast(yes ? "You agreed to be recorded" : "You declined. The meeting can't be recorded", yes ? "check" : "x");
+        loadInvites();
+      } catch (e) { toast(e.message); }
+    }));
+  }
+
   async function loadPendingConsent() {
     const el = document.getElementById("pendingConsent");
     if (!el) return;
@@ -706,33 +738,73 @@ const store = {
       <div class="stack">
         <div><label class="field" for="mtitle">Meeting title</label>
           <input type="text" id="mtitle" placeholder="e.g. Line 2 weekly" value="Line 2 weekly"></div>
-        <div><label class="field" for="mpeople">Participants</label>
-          <input type="text" id="mpeople" placeholder="Names, separated by commas" value="${esc(state.user)}"></div>
+        <div><label class="field" for="memail">Invite participants by email</label>
+          <div class="chipbox" id="chipbox"><input type="email" id="memail" list="peopleEmails" placeholder="name@knowflow-demo.de, press Enter" autocomplete="off" enterkeyhint="done"></div>
+          <datalist id="peopleEmails">${state.experts.filter((x) => x.email).map((x) => `<option value="${esc(x.email)}">${esc(x.name)}</option>`).join("")}</datalist>
+          <p class="small muted" id="emailMsg" style="margin:6px 0 0">You are included as the organiser. No real emails are sent.</p>
+          <input type="hidden" id="mpeople" value="${esc(state.user)}"></div>
         <div><label class="field">Language spoken</label>${langChips()}</div>
         <div class="consent" id="consentBox">
           <p style="margin:0 0 12px"><b style="font-weight:500">Everyone must agree before recording.</b><br>
             <small class="muted">Each person confirms for themselves. Required by law in Germany. Audio is never stored, only the extracted knowledge.</small></p>
-          <button class="btn primary block" id="askConsent" type="button">${ic("users")}Ask everyone for consent</button>
+          <button class="btn primary block" id="askConsent" type="button">${ic("mail")}Send invites</button>
         </div>
         <div class="row">
           <button class="btn primary grow" id="mrec" disabled>${ic("mic")}Record</button>
           <button class="btn grow" id="mtype" disabled>${ic("keyboard")}Paste notes</button>
         </div>
       </div>`;
+    // email chips: Enter / comma adds; known emails map to people, unknown ones are flagged
+    const emails = [], emailIn = document.getElementById("memail"), msg = document.getElementById("emailMsg");
+    const byEmail = (e) => state.experts.find((x) => (x.email || "").toLowerCase() === e.toLowerCase());
+    const drawChips = () => {
+      document.getElementById("chipbox").querySelectorAll(".echip").forEach((x) => x.remove());
+      emailIn.insertAdjacentHTML("beforebegin", emails.map((e, i) => { const p = byEmail(e);
+        return `<span class="echip ${p ? "" : "unknown"}" title="${p ? esc(p.name) : "Not a KnowFlow user yet"}">${esc(e)}${p ? "" : ` · Not a KnowFlow user yet`}
+          <button type="button" data-rm="${i}" aria-label="Remove ${esc(e)}">${ic("x")}</button></span>`; }).join(""));
+      document.getElementById("chipbox").querySelectorAll("[data-rm]").forEach((b) => b.addEventListener("click", () => { emails.splice(+b.dataset.rm, 1); drawChips(); }));
+      const me = state.user, names = emails.map(byEmail).filter(Boolean).map((p) => p.name);
+      document.getElementById("mpeople").value = [me, ...names.filter((n) => n !== me)].join(", ");
+    };
+    const addEmail = () => {
+      const v = emailIn.value.trim().replace(/,$/, "");
+      if (!v) return;
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) { msg.textContent = "That is not a valid email address."; msg.className = "small login-err"; return; }
+      if (!emails.some((e) => e.toLowerCase() === v.toLowerCase())) emails.push(v);
+      emailIn.value = ""; msg.className = "small muted"; msg.textContent = byEmail(v) ? `Added ${byEmail(v).name}.` : `${v}: Not a KnowFlow user yet`;
+      drawChips();
+    };
+    emailIn.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); addEmail(); } });
+    emailIn.addEventListener("change", () => { if (byEmail(emailIn.value.trim())) addEmail(); });
+    document.getElementById("chipbox").addEventListener("click", () => emailIn.focus());
     document.getElementById("askConsent").addEventListener("click", async () => {
+      addEmail();
+      if (emails.some((e) => !byEmail(e))) return toast("Remove emails that are not KnowFlow users yet");
       const people = document.getElementById("mpeople").value.split(",").map((x) => x.trim()).filter(Boolean);
-      if (!people.length) return toast("Add the participants first");
+      if (people.length < 2) return toast("Invite at least one person by email");
       try {
         consentReq = await api("/meetings/consent", { method: "POST", json: {
           title: document.getElementById("mtitle").value.trim() || "Team meeting", organiser: state.user, participants: people } });
-        document.getElementById("mtitle").disabled = document.getElementById("mpeople").disabled = true;
-        renderConsent();
-        consentPoll = setInterval(async () => {
-          if (!document.getElementById("consentBox") || !consentReq) return clearInterval(consentPoll);
-          try { const fresh = await api("/meetings/consent/" + consentReq.id); if (JSON.stringify(fresh.answers) !== JSON.stringify(consentReq.answers)) { consentReq = fresh; renderConsent(); } } catch (_) {}
-        }, 2000);
+        store.set("consent_" + state.user, String(consentReq.id));
+        showConsent();
       } catch (e) { toast(e.message); }
     });
+    // an open request from before (e.g. after switching people to answer) comes back
+    const saved = store.get("consent_" + state.user);
+    if (saved) api("/meetings/consent/" + saved).then((c) => {
+      if (c.status === "used" || !document.getElementById("consentBox")) return store.set("consent_" + state.user, "");
+      consentReq = c; document.getElementById("mtitle").value = c.title; showConsent();
+    }).catch(() => store.set("consent_" + state.user, ""));
+    function showConsent() {
+      document.getElementById("mtitle").disabled = emailIn.disabled = true;
+      document.getElementById("chipbox").classList.add("locked");
+      renderConsent();
+      clearInterval(consentPoll);
+      consentPoll = setInterval(async () => {
+        if (!document.getElementById("consentBox") || !consentReq) return clearInterval(consentPoll);
+        try { const fresh = await api("/meetings/consent/" + consentReq.id); if (JSON.stringify(fresh.answers) !== JSON.stringify(consentReq.answers)) { consentReq = fresh; renderConsent(); } } catch (_) {}
+      }, 2000);
+    }
     document.getElementById("mrec").addEventListener("click", meetingRecord);
     document.getElementById("mtype").addEventListener("click", meetingType);
   }
@@ -745,20 +817,22 @@ const store = {
       <div class="row-between"><span class="eyebrow" style="margin:0">Consent · ${esc(c.title)}</span>
         <span class="tag ${ready ? "recurring" : no ? "high" : "warn"}">${ready ? "Everyone agreed" : no ? "Not allowed" : "Waiting"}</span></div>
       <div class="list consent-list">${c.participants.map((p) => {
-        const a = c.answers[p];
-        return `<div class="list-item">${avatar(p)}<span class="grow"><b style="font-weight:500">${esc(p)}</b><br>
-          <small class="muted">${a ? (a.agreed ? `Agreed ${hhmm(a.at)} · ${a.on}` : `Said no ${hhmm(a.at)}`) : "Not answered yet"}</small></span>
-          ${a ? `<span class="tag ${a.agreed ? "recurring" : "high"}">${a.agreed ? "Agreed" : "No"}</span>` : no ? "" : `
-            <button class="btn small primary" data-agree="${esc(p)}" type="button">${ic("check")}I agree to be recorded</button>
-            <button class="btn small" data-refuse="${esc(p)}" type="button" aria-label="${esc(p)} says no">No</button>`}</div>`;
+        const a = c.answers[p], x = state.experts.find((e) => e.name === p), mail = x && x.email ? x.email : p;
+        return `<div class="list-item">${avatar(p)}<span class="grow"><b style="font-weight:500">${esc(mail)}</b><br>
+          <small class="muted">${esc(p)} · ${a ? (a.agreed ? `Agreed ${hhmm(a.at)}` : `Declined ${hhmm(a.at)}`) : `Invited ${hhmm(c.created)}`}</small></span>
+          ${a ? `<span class="tag ${a.agreed ? "recurring" : "high"}">${a.agreed ? "Agreed" : "Declined"}</span>`
+            : p === state.user && !no ? `
+            <button class="btn small primary" data-agree="${esc(p)}" type="button">${ic("check")}I agree</button>
+            <button class="btn small" data-refuse="${esc(p)}" type="button" aria-label="Decline">Decline</button>`
+            : `<span class="tag warn">Invited</span>`}</div>`;
       }).join("")}</div>
-      ${no ? `<p class="login-err" style="margin-top:12px">${esc(c.declined_by.join(", "))} said no. This meeting can't be recorded.</p>
+      ${no ? `<p class="login-err" style="margin-top:12px">${esc(c.declined_by.join(", "))} declined. This meeting can't be recorded.</p>
         <button class="btn block" id="consentRestart" type="button" style="margin-top:8px">Start over</button>`
-        : ready ? "" : `<p class="small muted" style="margin:12px 0 0">Others can also answer on their own phone: Record → Record a meeting.</p>`}`;
+        : ready ? "" : `<p class="small muted" style="margin:12px 0 0">Each invited person answers on their own Dashboard. Recording stays locked until everyone agreed.</p>`}`;
     document.getElementById("mrec").disabled = document.getElementById("mtype").disabled = !ready;
     box.querySelectorAll("[data-agree],[data-refuse]").forEach((b) => b.addEventListener("click", () =>
       consentAnswer(b.dataset.agree || b.dataset.refuse, !!b.dataset.agree)));
-    const rs = document.getElementById("consentRestart"); if (rs) rs.addEventListener("click", meetingSetup);
+    const rs = document.getElementById("consentRestart"); if (rs) rs.addEventListener("click", () => { store.set("consent_" + state.user, ""); meetingSetup(); });
   }
 
   // Own name: answer directly. Someone else's name: hand the device over, that person confirms.
@@ -847,6 +921,7 @@ const store = {
     box.innerHTML = `<div class="thinking"><div class="spinner"></div><b>AI is pulling out decisions and lessons…</b></div>`;
     try {
       const r = await api("/meetings", { method: "POST", form });
+      store.set("consent_" + state.user, "");
       box.innerHTML = meetingResultHTML(r) + `
         ${r.cards.length ? `<button class="btn primary block" id="addAll">${ic("check")}Add ${r.cards.length} cards to knowledge base</button>` : ""}
         <button class="btn ghost block" id="newMeet">New meeting</button>`;
@@ -939,6 +1014,7 @@ const store = {
       render(`
         <h1>Dashboard</h1>
         <p class="sub">Where knowledge is at risk, and what keeps coming back.</p>
+        <div id="invites"></div>
 
         <div class="section-label" style="margin-top:8px">Overview</div>
         <div class="kpis stats">
@@ -998,6 +1074,7 @@ const store = {
         try { await api("/admin/reset-demo", { method: "POST" }); await refreshMachines(); toast("Demo data reset", "rotate-ccw"); screenDashboard(); refreshBalance(); }
         catch (e) { toast(e.message); }
       });
+      loadInvites();
     } catch (e) {
       render(`<h1>Dashboard</h1><div class="empty"><span class="ei">${ic("file-question")}</span>${esc(e.message)}</div>`);
     }
@@ -1325,5 +1402,6 @@ const store = {
   renderWho();
   refreshBalance();
   Promise.all([refreshMachines(), api("/experts").then((x) => (state.experts = x)).catch(() => {})]).finally(route);
+  refreshInviteDot(); setInterval(refreshInviteDot, 5000);
 })();
 

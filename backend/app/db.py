@@ -15,7 +15,8 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS experts (
     name TEXT PRIMARY KEY,
     years_experience INTEGER,
-    retires_in_months INTEGER
+    retires_in_months INTEGER,
+    email TEXT
 );
 CREATE TABLE IF NOT EXISTS cards (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -124,6 +125,10 @@ def init() -> None:
         if "shared_by" not in cols:  # database created before this column existed
             c.execute("ALTER TABLE cards ADD COLUMN shared_by TEXT")
         c.execute("DELETE FROM open_questions WHERE lower(question) LIKE 'how was everyone%'")  # small talk, not a work question
+        if "email" not in {r[1] for r in c.execute("PRAGMA table_info(experts)").fetchall()}:
+            c.execute("ALTER TABLE experts ADD COLUMN email TEXT")
+        for n, e in DEMO_EMAILS.items():
+            c.execute("UPDATE experts SET email=? WHERE name=? AND email IS NULL", (e, n))
         mcols = {r[1] for r in c.execute("PRAGMA table_info(meetings)").fetchall()}
         if "consent_log" not in mcols:
             c.execute("ALTER TABLE meetings ADD COLUMN consent_log TEXT NOT NULL DEFAULT '[]'")
@@ -194,7 +199,10 @@ def list_cards(
     return [card_row_to_dict(r) for r in c.execute(q, args).fetchall()]
 
 
-EXPERT_YEARS = 5  # 5+ years = expert questions; below = questions for newer workers
+EXPERT_YEARS = 5
+# Demo work emails (no real email is ever sent; the picker stays the "signed-in" user).
+DEMO_EMAILS = {"Herr Müller": "mueller@knowflow-demo.de", "Frau Schneider": "schneider@knowflow-demo.de",
+               "Ahmed": "ahmed@knowflow-demo.de", "Lena Kowalski": "kowalski@knowflow-demo.de"}  # 5+ years = expert questions; below = questions for newer workers
 
 
 def expert_years(c: sqlite3.Connection, name: str) -> Optional[int]:

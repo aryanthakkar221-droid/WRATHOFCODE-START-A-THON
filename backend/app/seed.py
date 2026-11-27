@@ -172,6 +172,8 @@ def seed(reset: bool = False) -> int:
             return 0
         c.executemany("INSERT OR REPLACE INTO experts (name, years_experience, retires_in_months) "
                       "VALUES (?,?,?)", EXPERTS)
+        for n, e in db.DEMO_EMAILS.items():
+            c.execute("UPDATE experts SET email=? WHERE name=?", (e, n))
         c.executemany("INSERT OR REPLACE INTO shift_plan VALUES (?,?,?)", SHIFT_PLAN)
         years = {e[0]: e[1] for e in EXPERTS}
         for (days, author, machine, process, kind, problem, cause, solution, warning, tags,
