@@ -90,7 +90,8 @@ The seed data is built around this story. Run `POST /admin/reset-demo` between r
 | Storage | **SQLite** | One file, zero setup, enough for a pilot |
 | Search | All approved cards plus the question go into one prompt | With 15–500 cards that fits in one prompt, so no vector DB is needed |
 | QR codes | `segno` → SVG | Printable, scales cleanly |
-| Frontend | Mobile-first web app (Record · Ask · Meetings · Dashboard) | Workers use phones on the shop floor |
+| Frontend | **Plain HTML/CSS/JS**, mobile-first, served by the backend | No build step, one URL for app + API, works on any phone |
+| Voice in the browser | `MediaRecorder` API | Records audio in the browser, no app install |
 
 **Offline fallback:** if there's no API key, or the AI provider fails mid-pitch, the backend falls back to simple offline rules for structuring and keyword search. The demo never dies on stage.
 
@@ -107,7 +108,10 @@ WRATHOFCODE-START-A-THON/
 │   ├── tests/test_api.py  # end-to-end test of the whole demo story
 │   ├── requirements.txt
 │   └── .env.example
-└── frontend/            # Aditi's app
+└── frontend/            # the app (served at /)
+    ├── index.html
+    ├── styles.css
+    └── app.js           # screens: Record · Ask · Meetings · Dashboard · QR machine page · printable sign
 ```
 
 ### Run it locally
@@ -123,7 +127,22 @@ cp .env.example .env          # add OPENAI_API_KEY (optional: it also runs offli
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Open **http://localhost:8000/docs** to try every endpoint in the browser. Demo data loads on first start.
+Open **http://localhost:8000** for the app and **http://localhost:8000/docs** for the API. Demo data loads on first start.
+
+> **Microphone on phones needs HTTPS.** Recording works on `localhost` and on any HTTPS deployment. On plain `http://<LAN-IP>` phones fall back to "Type instead"; everything else (Ask, QR pages, Dashboard) works.
+
+### The app
+
+| Screen | What it does |
+|---|---|
+| 🎙️ **Record** | Big mic button; the 3 questions shown one by one; pulsing red dot + timer → "AI is writing your card…" → the card slides in → **Approve / Edit / Discard**. Shows a colleague's open question if you're the right expert. "Type instead" fallback. |
+| 🔎 **Ask** | Ask in any language → numbered steps, each with a source badge ("from Herr Müller, 3 Nov · 32 yrs"), the warning, and the source cards with **Did this work? 👍 👎**. Links like `#/ask/<question>` run a question directly. |
+| 👥 **Meetings** | Consent checkbox unlocks recording → red recording bar with timer → decisions, problems, lessons, action items → **Add to knowledge base**. |
+| 📊 **Dashboard** | Stats, alerts, knowledge-risk map (machines coloured by risk), drafts waiting for approval, open questions, QR codes per machine, demo reset. |
+| ⚙️ **Machine page** `#/m/<id>` | What the QR code opens on a phone: the machine's alerts and approved fixes, proven first. |
+| 🖨️ **Sign** `#/sign/<id>` | Printable A4 sign with the machine name and QR code. |
+
+Tap the name in the top-right to switch person (e.g. Herr Müller → Ahmed) during the demo.
 
 Run the tests (offline, no key needed):
 
@@ -138,7 +157,7 @@ python -m pytest -q
 | `OPENAI_API_KEY` | – | Turns on the AI brain and speech-to-text |
 | `OPENAI_MODEL` | `gpt-4o-mini` | Chat model for structuring, answers and meetings |
 | `OPENAI_STT_MODEL` | `whisper-1` | Speech-to-text model |
-| `KNOWFLOW_PUBLIC_URL` | API URL | Frontend URL that printed QR codes open (`<url>/machine/<id>`) |
+| `KNOWFLOW_PUBLIC_URL` | this server | Public URL printed QR codes open (`<url>/#/m/<id>`) |
 | `KNOWFLOW_SEED` | `1` | Load demo data on first start |
 | `KNOWFLOW_ALLOW_RESET` | `1` | Allow `POST /admin/reset-demo` (set to `0` in production) |
 
@@ -246,7 +265,7 @@ All three use strict JSON-schema outputs, so the frontend always gets the same s
 
 | | Role | Owns |
 |---|---|---|
-| **Rishabh** | Backend | API, speech-to-text, AI structuring, search and answers, pattern alerts, sample data |
+| **Rishabh** | Backend + frontend | API, speech-to-text, AI structuring, search and answers, pattern alerts, sample data, the web app |
 | **Aditi** | Frontend | Record, card, ask, QR machine page, dashboard, meetings; demo flow; backup demo video |
 | **Aryan** | Business | Problem slide, business model, pricing, costs, competition, deck, pitch |
 | **Bushra** | Marketing | First customers, first 100 users, go-to-market slides, pitch, jury Q&A |

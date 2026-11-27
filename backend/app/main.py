@@ -3,6 +3,7 @@
 Run:  uvicorn app.main:app --reload   (from the backend/ folder)
 Docs: http://localhost:8000/docs
 """
+import io
 import json
 import logging
 import os
@@ -337,12 +338,14 @@ def machine(machine_id: str) -> Dict[str, Any]:
 
 @app.get("/machine/{machine_id}/qr.svg", tags=["machines"])
 def machine_qr(machine_id: str, request: Request) -> Response:
-    """Printable QR code. Points to {KNOWFLOW_PUBLIC_URL}/machine/{id} (the frontend page);
-    without that setting it points to this API's JSON."""
+    """Printable QR code that opens the machine page in the app: {base}/#/m/{id}.
+    Base is KNOWFLOW_PUBLIC_URL if set, otherwise this server (which also serves the app)."""
     mid = db.slugify(machine_id)
     base = (PUBLIC_URL or str(request.base_url)).rstrip("/")
-    qr = segno.make(base + "/machine/" + mid, error="m")
-    return Response(qr.svg_inline(scale=8, dark="#1f2937"), media_type="image/svg+xml")
+    qr = segno.make(base + "/#/m/" + mid, error="m")
+    buf = io.BytesIO()
+    qr.save(buf, kind="svg", scale=8, dark="#1f2937", xmldecl=False)  # standalone SVG with xmlns
+    return Response(buf.getvalue(), media_type="image/svg+xml")
 
 
 # ------------------------------------------------------------------ dashboard
@@ -439,6 +442,7 @@ def list_meetings() -> List[Dict[str, Any]]:
 
 # ------------------------------------------------------------------ frontend
 
-_FRONTEND = os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "dist")
+# Served last, so API routes win. The app uses hash routes (#/m/cnc-3), so no clash.
+_FRONTEND = os.path.join(os.path.dirname(__file__), "..", "..", "frontend")
 if os.path.isdir(_FRONTEND):
-    app.mount("/app", StaticFiles(directory=_FRONTEND, html=True), name="frontend")
+    app.mount("/", StaticFiles(directory=_FRONTEND, html=True), name="frontend")
