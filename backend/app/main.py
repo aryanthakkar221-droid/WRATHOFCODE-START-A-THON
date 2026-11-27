@@ -355,12 +355,18 @@ class Ask(BaseModel):
     asked_by: Optional[str] = None
 
 
+OFF_TOPIC = "I answer questions about machines and work problems. Try: 'The packaging machine jams, what do I do?'"
+
+
 @app.post("/ask", tags=["ask"])
 def ask(body: Ask) -> Dict[str, Any]:
     """A new employee asks in plain language (any language). The answer is built only from
     approved cards and names who solved it and when. Unanswered questions go to the
     experts (closed loop)."""
     mid = db.slugify(body.machine) if body.machine else None
+    if not ai.is_work_question(body.question):
+        return {"answered": False, "off_topic": True, "question": body.question, "steps": [], "sources": [],
+                "summary": OFF_TOPIC, "warning": None}
     with db.conn() as c:
         cards = db.list_cards(c, mid, "approved")
         candidates = ai.rank_cards(body.question, cards)[:25] or cards[:25]

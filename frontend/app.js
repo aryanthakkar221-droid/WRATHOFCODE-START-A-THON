@@ -600,6 +600,8 @@ const store = {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 18.75V5.25M18.75 12 12 5.25 5.25 12"/></svg></button>
         </div>
       </form>
+      <div class="chips" style="margin-top:12px">${["The packaging machine jams, what do I do?", "Press 2 parts are not accurate", "Compressor pressure drops at night"]
+        .map((s) => `<button class="chip" type="button" data-s="${esc(s)}">${esc(s)}</button>`).join("")}</div>
       <div id="answer"></div>`);
     const q = document.getElementById("q"), send = document.getElementById("askSend");
     const grow = () => { q.style.height = "auto"; q.style.height = Math.min(q.scrollHeight, 200) + "px"; send.disabled = !q.value.trim(); };
@@ -629,10 +631,15 @@ const store = {
       }
     };
     document.getElementById("askForm").addEventListener("submit", (e) => { e.preventDefault(); go(q.value); });
+    view.querySelectorAll("[data-s]").forEach((c) => c.addEventListener("click", () => go(c.dataset.s)));
     if (preset) go(preset); else q.focus();
   }
 
   function answerHTML(r) {
+    if (r.off_topic) {
+      return `<div class="answer none"><div class="eyebrow">${ic("circle-help")}Not a work question</div>
+        <p class="answer-summary">${esc(r.summary)}</p></div>`;
+    }
     if (!r.answered) {
       return `<div class="answer none">
         <div class="eyebrow">${ic("file-question")}No answer yet</div>

@@ -294,3 +294,11 @@ def test_tokens_rules():
     assert a["tokens"]["amount"] == 5 and _bal("Lena Kowalski")["balance"] == 5
     v = client.post("/wallet/Herr%20M%C3%BCller/voucher").json()
     assert v["demo"] and v["code"].startswith("KF-") and "<svg" in v["qr_svg"]
+
+
+def test_ask_small_talk_not_sent_to_experts():
+    before = len(client.get("/open-questions").json()) if client.get("/open-questions").status_code == 200 else None
+    r = client.post("/ask", json={"question": "how was everyone's day?", "asked_by": "Ahmed"}).json()
+    assert r.get("off_topic") and "machines and work problems" in r["summary"] and "open_question_id" not in r
+    r = client.post("/ask", json={"question": "How do I change the oil on the forklift?", "asked_by": "Ahmed"}).json()
+    assert not r.get("off_topic")

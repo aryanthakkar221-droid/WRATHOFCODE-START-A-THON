@@ -51,6 +51,27 @@ def _call_json(system: str, user: str, schema: Dict[str, Any], name: str = "resu
         return None
 
 
+_SMALLTALK = re.compile(r"\b(how (was|is|are) (every(one|body)|you|your)|how'?s (it going|everyone|your)|hello|hi there|good (morning|night)|joke|weather|"
+                        r"wie geht'?s|wie war (euer|dein|der) tag|witz|wetter|love|birthday|football|fussball)\b", re.I)
+_WORK = re.compile(r"(machine|maschine|press|compressor|kompressor|packag|verpack|jam|stau|error|fehler|alarm|pressure|druck|"
+                   r"oil|öl|leak|fix|repair|clean|change|how do i|wie (mache|kann)|e-?\d{2,}|motor|belt|sensor|label|film|part|teil)", re.I)
+
+
+def is_work_question(question: str) -> bool:
+    """True for questions about a machine, process, problem or how to do a task. Small talk,
+    jokes and personal/off-topic questions are False (not searched, not sent to experts)."""
+    out = _call_json(
+        "Classify a factory worker's question. is_work_question is true only if it is about a machine, "
+        "a production process, a technical/work problem, or how to do a work task. Small talk, greetings, "
+        "jokes, personal or off-topic questions are false.",
+        question,
+        {"type": "object", "additionalProperties": False, "required": ["is_work_question"],
+         "properties": {"is_work_question": {"type": "boolean"}}}, "classify")
+    if out is not None:
+        return bool(out["is_work_question"])
+    return bool(_WORK.search(question)) or not _SMALLTALK.search(question)
+
+
 def _nullable(t: str) -> Dict[str, Any]:
     return {"type": [t, "null"]}
 

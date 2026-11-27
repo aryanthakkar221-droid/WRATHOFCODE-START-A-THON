@@ -123,6 +123,7 @@ def init() -> None:
         cols = {r[1] for r in c.execute("PRAGMA table_info(cards)").fetchall()}
         if "shared_by" not in cols:  # database created before this column existed
             c.execute("ALTER TABLE cards ADD COLUMN shared_by TEXT")
+        c.execute("DELETE FROM open_questions WHERE lower(question) LIKE 'how was everyone%'")  # small talk, not a work question
         mcols = {r[1] for r in c.execute("PRAGMA table_info(meetings)").fetchall()}
         if "consent_log" not in mcols:
             c.execute("ALTER TABLE meetings ADD COLUMN consent_log TEXT NOT NULL DEFAULT '[]'")
