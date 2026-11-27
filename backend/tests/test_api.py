@@ -298,7 +298,12 @@ def test_tokens_rules():
 
 def test_ask_small_talk_not_sent_to_experts():
     before = len(client.get("/open-questions").json()) if client.get("/open-questions").status_code == 200 else None
-    r = client.post("/ask", json={"question": "how was everyone's day?", "asked_by": "Ahmed"}).json()
-    assert r.get("off_topic") and "machines and work problems" in r["summary"] and "open_question_id" not in r
+    n0 = len(client.get("/open-questions").json())
+    for q in ["how was everyone's day?", "hey", "what is film tension?"]:
+        r = client.post("/ask", json={"question": q, "asked_by": "Ahmed"}).json()
+        assert r.get("general") and r["summary"] and not r["steps"] and "open_question_id" not in r, q
+    assert len(client.get("/open-questions").json()) == n0
+    r = client.post("/ask", json={"question": "The packaging machine jams, what do I do?", "asked_by": "Ahmed"}).json()
+    assert not r.get("general") and r["answered"] and r["steps"]
     r = client.post("/ask", json={"question": "How do I change the oil on the forklift?", "asked_by": "Ahmed"}).json()
-    assert not r.get("off_topic")
+    assert not r.get("general")

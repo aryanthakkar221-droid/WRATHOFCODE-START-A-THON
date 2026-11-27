@@ -57,19 +57,48 @@ _WORK = re.compile(r"(machine|maschine|press|compressor|kompressor|packag|verpac
                    r"oil|öl|leak|fix|repair|clean|change|how do i|wie (mache|kann)|e-?\d{2,}|motor|belt|sensor|label|film|part|teil)", re.I)
 
 
+_GENERAL = re.compile(r"^\s*(hey|hi|hello|hallo|moin|servus|thanks|thank you|danke|good (morning|evening)|"
+                      r"what (is|are|does)|was (ist|sind|bedeutet)|explain|erkl[äa]r|define|who is|wer ist)\b", re.I)
+
+
 def is_work_question(question: str) -> bool:
-    """True for questions about a machine, process, problem or how to do a task. Small talk,
-    jokes and personal/off-topic questions are False (not searched, not sent to experts)."""
+    """True only for work FIX questions: a problem with a machine/process, or how to do a specific
+    work task. Small talk and general questions (e.g. "what is film tension?") are False: they get
+    a labelled general answer, are not searched in the cards and never go to the experts."""
     out = _call_json(
-        "Classify a factory worker's question. is_work_question is true only if it is about a machine, "
-        "a production process, a technical/work problem, or how to do a work task. Small talk, greetings, "
-        "jokes, personal or off-topic questions are false.",
+        "Classify a factory worker's chat message. is_work_question is true only for a WORK FIX question: "
+        "a concrete problem with a machine or process (it jams, an error, parts are wrong, pressure drops) "
+        "or how to do a specific work task on a machine. It is false for greetings, small talk, jokes, "
+        "personal or off-topic messages, and for general knowledge questions such as definitions "
+        "('what is film tension?').",
         question,
         {"type": "object", "additionalProperties": False, "required": ["is_work_question"],
          "properties": {"is_work_question": {"type": "boolean"}}}, "classify")
     if out is not None:
         return bool(out["is_work_question"])
-    return bool(_WORK.search(question)) or not _SMALLTALK.search(question)
+    if _GENERAL.search(question) or _SMALLTALK.search(question):
+        return False
+    return bool(_WORK.search(question)) or len(question.split()) > 3
+
+
+def general_answer(question: str, person: Optional[str]) -> str:
+    """Friendly, short general chat answer. Never machine repair steps. Not stored anywhere."""
+    name = (person or "").strip()
+    out = _call_json(
+        "You are KnowFlow's friendly assistant in a factory app. Answer the message naturally and briefly "
+        "(1-3 short sentences), like a normal chat assistant. Address the person by name once if a name is "
+        "given. You may explain general concepts in plain words. NEVER give machine repair, troubleshooting "
+        "or step-by-step fix instructions: for those, say the person should ask the concrete problem so "
+        "KnowFlow can answer from the experts' approved cards. Never pretend to be one of the experts.",
+        ("Person: %s\n" % name if name else "") + "Message: " + question,
+        {"type": "object", "additionalProperties": False, "required": ["answer"],
+         "properties": {"answer": {"type": "string"}}}, "general")
+    if out and out.get("answer", "").strip():
+        return out["answer"].strip()
+    hi = ("Hi %s! " % name) if name else "Hi! "
+    if re.match(r"^\s*(hey|hi|hello|hallo|moin|servus|good)", question, re.I):
+        return hi + "How can I help? Ask me about a machine problem and I'll answer from your experts' approved cards."
+    return hi + "That's a general question. For a concrete machine problem, describe what happens and I'll answer from the approved cards."
 
 
 def _nullable(t: str) -> Dict[str, Any]:

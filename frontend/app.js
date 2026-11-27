@@ -638,8 +638,8 @@ const store = {
   }
 
   function answerHTML(r) {
-    if (r.off_topic) {
-      return `<div class="answer none"><div class="eyebrow">${ic("circle-help")}Not a work question</div>
+    if (r.general) {
+      return `<div class="answer general"><div class="eyebrow">${ic("message-square")}General AI answer · not checked by your experts</div>
         <p class="answer-summary">${esc(r.summary)}</p></div>`;
     }
     if (!r.answered) {

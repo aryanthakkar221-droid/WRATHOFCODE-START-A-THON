@@ -309,6 +309,8 @@ dl { margin: 10px 0 0; }
   padding: 22px; margin-top: 18px; animation: slideIn .25s var(--ease) both; min-width: 0; overflow-wrap: anywhere;
 }
 .answer.none { border-left: 3px solid var(--warn); }
+.answer.general { border-left: 3px solid #C9C3D3; }
+.answer.general .answer-summary { font-weight: 400; }
 .answer-summary { font-size: 19px; font-weight: 500; letter-spacing: -.01em; margin: 0 0 14px; line-height: 1.4; }
 .steps { list-style: none; padding: 0; margin: 0; counter-reset: s; }
 .steps li { position: relative; padding: 14px 0 14px 44px; border-top: 1px solid var(--line); counter-increment: s; }
