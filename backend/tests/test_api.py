@@ -72,17 +72,55 @@ def test_qr_machine_page_and_feedback():
     assert client.get("/machine/does-not-exist").status_code == 404
 
 
+def _consent(title, people, organiser=None):
+    """Every participant agrees for themselves (own device)."""
+    req = client.post("/meetings/consent", json={"title": title, "organiser": organiser or people[0],
+                                                 "participants": people}).json()
+    for p in people:
+        req = client.post("/meetings/consent/%d/answer" % req["id"], json={"name": p, "agree": True, "by": p}).json()
+    assert req["status"] == "ready"
+    return req["id"]
+
+
 def test_meeting_needs_consent_and_creates_cards():
-    body = {"title": "Line 2 weekly", "participants": "Frau Schneider, Ahmed",
+    body = {"title": "Line 2 weekly",
             "text": "We decided to switch to the thicker film because the thin one keeps jamming. "
                     "Problem: the packaging line jams at roll change. Lesson learned: label the film type on the holder. "
                     "Ahmed will order the new rolls by Friday."}
     assert client.post("/meetings", data=body).status_code == 400
-    r = client.post("/meetings", data=dict(body, consent="true"))
+    r = client.post("/meetings", data=dict(body, consent_request=_consent("Line 2 weekly", ["Frau Schneider", "Ahmed"])))
     assert r.status_code == 200, r.text
     j = r.json()
     assert j["decisions"] and j["cards"] and all(c["source"] == "meeting" for c in j["cards"])
-    assert client.get("/meetings").json()[0]["title"] == "Line 2 weekly"
+    m = client.get("/meetings").json()[0]
+    assert m["title"] == "Line 2 weekly" and [x["name"] for x in m["consent_log"]] == ["Frau Schneider", "Ahmed"]
+    assert all(x["agreed_at"] and x["on"] == "own device" for x in m["consent_log"])
+
+
+def test_meeting_consent_rules():
+    req = client.post("/meetings/consent", json={"title": "Shift handover", "organiser": "Herr Müller",
+                                                 "participants": ["Herr Müller", "Ahmed", "Lena Kowalski"]}).json()
+    rid, url = req["id"], "/meetings/consent/%d/answer" % req["id"]
+    text = {"title": "Shift handover", "text": "We decided to check the film tension at every shift start."}
+    # the organiser cannot answer for someone else from their own device
+    assert client.post(url, json={"name": "Ahmed", "agree": True, "by": "Herr Müller"}).status_code == 403
+    client.post(url, json={"name": "Herr Müller", "agree": True, "by": "Herr Müller"})
+    # Ahmed answers on the shared device after it was handed to him (logged as such)
+    r = client.post(url, json={"name": "Ahmed", "agree": True, "by": "Herr Müller", "shared_device": True}).json()
+    assert r["answers"]["Ahmed"]["on"] == "shared device" and r["status"] == "waiting"
+    # locked until everyone agreed
+    assert client.post("/meetings", data=dict(text, consent_request=rid)).status_code == 400
+    assert any(x["id"] == rid for x in client.get("/meetings/consent", params={"pending_for": "Lena Kowalski"}).json())
+    # one "no" blocks the meeting for good
+    r = client.post(url, json={"name": "Lena Kowalski", "agree": False, "by": "Lena Kowalski"}).json()
+    assert r["status"] == "declined" and r["declined_by"] == ["Lena Kowalski"]
+    bad = client.post("/meetings", data=dict(text, consent_request=rid))
+    assert bad.status_code == 400 and "said no" in bad.json()["detail"]
+    assert client.post(url, json={"name": "Lena Kowalski", "agree": True, "by": "Lena Kowalski"}).status_code == 409
+    # single use
+    ok = _consent("Quick one", ["Ahmed"])
+    assert client.post("/meetings", data=dict(text, consent_request=ok)).status_code == 200
+    assert client.post("/meetings", data=dict(text, consent_request=ok)).status_code == 400
 
 
 def test_audio_without_stt_key_gives_clear_error():
@@ -205,7 +243,7 @@ def test_machine_detected_from_words_or_shift_plan():
 
 
 def test_meeting_machine_from_title():
-    r = client.post("/meetings", data={"title": "Press 2 weekly", "participants": "Herr Müller", "consent": "true",
+    r = client.post("/meetings", data={"title": "Press 2 weekly", "consent_request": _consent("Press 2 weekly", ["Herr Müller"]),
         "text": "Problem: parts came out too big after the tool change. We decided to always check the first part."}).json()
     assert r["cards"] and all(c["machine"] == "Press 2" for c in r["cards"])
 

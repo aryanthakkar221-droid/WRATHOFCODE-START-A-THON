@@ -161,6 +161,7 @@ def seed(reset: bool = False) -> int:
         if reset:
             c.execute("DELETE FROM cards")
             c.execute("DELETE FROM meetings")
+            c.execute("DELETE FROM consent_requests")
             c.execute("DELETE FROM open_questions")
             c.execute("DELETE FROM experts")
             c.execute("DELETE FROM shift_plan")

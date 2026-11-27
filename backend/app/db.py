@@ -49,7 +49,17 @@ CREATE TABLE IF NOT EXISTS meetings (
     title TEXT NOT NULL,
     participants TEXT NOT NULL DEFAULT '[]',
     transcript TEXT,
-    result TEXT NOT NULL DEFAULT '{}'
+    result TEXT NOT NULL DEFAULT '{}',
+    consent_log TEXT NOT NULL DEFAULT '[]'      -- who agreed to the recording, when, on which device
+);
+CREATE TABLE IF NOT EXISTS consent_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    created TEXT NOT NULL,
+    title TEXT NOT NULL,
+    organiser TEXT NOT NULL,
+    participants TEXT NOT NULL,                 -- JSON list of names
+    answers TEXT NOT NULL DEFAULT '{}',         -- {name: {"agreed": bool, "at": iso, "on": "own device"|"shared device"}}
+    meeting_id INTEGER                          -- set once used for a meeting (single use)
 );
 CREATE TABLE IF NOT EXISTS token_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -113,6 +123,9 @@ def init() -> None:
         cols = {r[1] for r in c.execute("PRAGMA table_info(cards)").fetchall()}
         if "shared_by" not in cols:  # database created before this column existed
             c.execute("ALTER TABLE cards ADD COLUMN shared_by TEXT")
+        mcols = {r[1] for r in c.execute("PRAGMA table_info(meetings)").fetchall()}
+        if "consent_log" not in mcols:
+            c.execute("ALTER TABLE meetings ADD COLUMN consent_log TEXT NOT NULL DEFAULT '[]'")
 
 
 def card_row_to_dict(r: sqlite3.Row) -> Dict[str, Any]:

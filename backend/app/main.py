@@ -533,12 +533,106 @@ def challenge(body: ChallengeReq) -> Dict[str, Any]:
 
 
 # ------------------------------------------------------------------ meetings
+# Consent: the organiser lists the participants; each participant answers for themselves
+# (on their own device, or on the shared device after it is handed to them). Recording is
+# only possible when everyone agreed; one "no" blocks the meeting. The log is kept.
+
+class ConsentRequest(BaseModel):
+    title: str
+    organiser: str
+    participants: List[str]
+
+
+class ConsentAnswer(BaseModel):
+    name: str                      # the participant answering
+    agree: bool
+    by: str                        # who is signed in on the device that sent the answer
+    shared_device: bool = False    # True only after the device was handed to `name`
+
+
+def _consent_dict(r) -> Dict[str, Any]:
+    d = dict(r)
+    d["participants"] = json.loads(d["participants"])
+    d["answers"] = json.loads(d["answers"])
+    ans = d["answers"]
+    if any(a.get("agreed") is False for a in ans.values()):
+        d["status"] = "declined"
+    elif all(ans.get(p, {}).get("agreed") for p in d["participants"]):
+        d["status"] = "ready"
+    else:
+        d["status"] = "waiting"
+    if d.get("meeting_id"):
+        d["status"] = "used"
+    d["declined_by"] = [n for n, a in ans.items() if a.get("agreed") is False]
+    return d
+
+
+def _consent_or_404(c, rid: int) -> Dict[str, Any]:
+    r = c.execute("SELECT * FROM consent_requests WHERE id=?", (rid,)).fetchone()
+    if not r:
+        raise HTTPException(404, "Consent request not found")
+    return _consent_dict(r)
+
+
+@app.post("/meetings/consent", tags=["meetings"])
+def create_consent(body: ConsentRequest) -> Dict[str, Any]:
+    """The organiser lists the participants. Nobody has agreed yet."""
+    people = []
+    for p in body.participants:
+        p = p.strip()
+        if p and p not in people:
+            people.append(p)
+    if not people:
+        raise HTTPException(422, "Add at least one participant.")
+    with db.conn() as c:
+        cur = c.execute("INSERT INTO consent_requests (created, title, organiser, participants) VALUES (?,?,?,?)",
+                        (db.now_iso(), body.title.strip() or "Team meeting", body.organiser,
+                         json.dumps(people, ensure_ascii=False)))
+        return _consent_or_404(c, cur.lastrowid)
+
+
+@app.get("/meetings/consent", tags=["meetings"])
+def pending_consents(pending_for: str) -> List[Dict[str, Any]]:
+    """Open requests where this person still has to answer (for their own device)."""
+    with db.conn() as c:
+        rows = [_consent_dict(r) for r in c.execute(
+            "SELECT * FROM consent_requests WHERE meeting_id IS NULL ORDER BY created DESC").fetchall()]
+    return [r for r in rows if r["status"] == "waiting" and pending_for in r["participants"]
+            and pending_for not in r["answers"]]
+
+
+@app.get("/meetings/consent/{rid}", tags=["meetings"])
+def get_consent(rid: int) -> Dict[str, Any]:
+    with db.conn() as c:
+        return _consent_or_404(c, rid)
+
+
+@app.post("/meetings/consent/{rid}/answer", tags=["meetings"])
+def answer_consent(rid: int, body: ConsentAnswer) -> Dict[str, Any]:
+    """A participant agrees or says no, for themselves only."""
+    with db.conn() as c:
+        req = _consent_or_404(c, rid)
+        if req["status"] == "used":
+            raise HTTPException(409, "This meeting was already recorded.")
+        if body.name not in req["participants"]:
+            raise HTTPException(404, "%s is not a participant." % body.name)
+        if body.by != body.name and not body.shared_device:
+            raise HTTPException(403, "Only %s can answer for themselves." % body.name)
+        prev = req["answers"].get(body.name)
+        if prev and prev.get("agreed") is False:
+            raise HTTPException(409, "%s already said no." % body.name)
+        req["answers"][body.name] = {"agreed": body.agree, "at": db.now_iso(),
+                                     "on": "shared device" if body.by != body.name else "own device"}
+        c.execute("UPDATE consent_requests SET answers=? WHERE id=?",
+                  (json.dumps(req["answers"], ensure_ascii=False), rid))
+        return _consent_or_404(c, rid)
+
 
 @app.post("/meetings", tags=["meetings"])
 async def create_meeting(
     title: str = Form(...),
-    participants: str = Form("", description="Comma-separated names"),
-    consent: bool = Form(False, description="Everyone in the meeting agreed to the recording"),
+    participants: str = Form("", description="Ignored when consent_request is given (its participants are used)"),
+    consent_request: Optional[int] = Form(None, description="Consent request where every participant agreed"),
     text: Optional[str] = Form(None),
     language: Optional[str] = Form(None),
     audio: Optional[UploadFile] = File(None),
@@ -546,8 +640,18 @@ async def create_meeting(
     """Record a meeting and keep the know-how: decisions with reasons, problems and
     solutions, lessons, action items. Lasting points become draft cards. Consent is
     required: recording without it is illegal in Germany."""
-    if not consent:
-        raise HTTPException(400, "Consent required: everyone in the meeting must agree to the recording.")
+    if not consent_request:
+        raise HTTPException(400, "Consent required: every participant must agree to the recording first.")
+    with db.conn() as c:
+        req = _consent_or_404(c, consent_request)
+    if req["status"] != "ready":
+        who = ", ".join(req["declined_by"]) or ", ".join(p for p in req["participants"] if p not in req["answers"])
+        raise HTTPException(400, {"declined": "Not recorded: %s said no." % who,
+                                  "used": "This consent was already used for a meeting.",
+                                  }.get(req["status"], "Waiting for consent from: %s." % who))
+    consent_log = [{"name": p, "agreed_at": req["answers"][p]["at"], "on": req["answers"][p]["on"]}
+                   for p in req["participants"]]
+    participants = ", ".join(req["participants"])
     transcript, audio_path = await _text_from(text, audio, language)
     _delete_audio(audio_path)  # meetings never keep audio; only extracted knowledge stays
     with db.conn() as c:
@@ -561,11 +665,12 @@ async def create_meeting(
     author = people[0] if people else "Meeting"
     with db.conn() as c:
         cur = c.execute(
-            "INSERT INTO meetings (date, title, participants, transcript, result) VALUES (?,?,?,?,?)",
+            "INSERT INTO meetings (date, title, participants, transcript, result, consent_log) VALUES (?,?,?,?,?,?)",
             (db.now_iso(), title, json.dumps(people, ensure_ascii=False), transcript,
-             json.dumps(result, ensure_ascii=False)),
+             json.dumps(result, ensure_ascii=False), json.dumps(consent_log, ensure_ascii=False)),
         )
         meeting_id = cur.lastrowid
+        c.execute("UPDATE consent_requests SET meeting_id=? WHERE id=?", (meeting_id, consent_request))
         new_ids = []
         for p in result["problems"]:
             new_ids.append(db.insert_card(c, {
@@ -582,18 +687,19 @@ async def create_meeting(
                 "author": author, "machine": fallback, "process": title, "kind": "lesson", "problem": lesson,
                 "tags": ["lesson"], "source": "meeting", "meeting_id": meeting_id}))
         cards = [db.get_card(c, i) for i in new_ids]
-    return {"meeting_id": meeting_id, "title": title, "participants": people,
+    return {"meeting_id": meeting_id, "title": title, "participants": people, "consent_log": consent_log,
             "transcript": transcript, **result, "cards": cards}
 
 
 @app.get("/meetings", tags=["meetings"])
 def list_meetings() -> List[Dict[str, Any]]:
     with db.conn() as c:
-        rows = c.execute("SELECT id, date, title, participants, result FROM meetings ORDER BY date DESC").fetchall()
+        rows = c.execute("SELECT id, date, title, participants, result, consent_log FROM meetings ORDER BY date DESC").fetchall()
     out = []
     for r in rows:
         d = dict(r)
         d["participants"] = json.loads(d["participants"])
+        d["consent_log"] = json.loads(d["consent_log"] or "[]")
         d.update(json.loads(d.pop("result")))
         out.append(d)
     return out

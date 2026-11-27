@@ -632,3 +632,14 @@ body.login-mode::before {
 .voice .rec-status { font-family: var(--sans); text-transform: none; letter-spacing: 0; font-size: 15px; color: var(--ink-2); }
 .voice.on .rec-status { color: var(--ink); }
 @media (prefers-reduced-motion: reduce) { .voice-bars i { transition: none; } }
+
+/* ---------- meeting consent ---------- */
+.consent-list { margin-top: 12px; box-shadow: none; }
+.consent-list .list-item { flex-wrap: wrap; }
+.consent-list .list-item .btn.small { flex: 1 1 auto; }
+.rec-bar.live { position: sticky; top: 76px; z-index: 5; background: #B42318; color: #fff; border-color: #B42318; }
+.rec-bar.live .dot { background: #fff; box-shadow: 0 0 0 4px rgba(255, 255, 255, .3); }
+.say-aloud { display: flex; gap: 12px; align-items: flex-start; margin-top: 12px; background: var(--surface); border: 1px solid var(--line);
+  border-left: 3px solid #B42318; border-radius: 14px; padding: 14px 16px; box-shadow: var(--shadow); }
+.say-aloud b { font-weight: 500; font-size: 18px; }
+.consent-log { display: flex; flex-direction: column; gap: 2px; margin-top: 10px; font-size: 14px; color: var(--ink-2); }

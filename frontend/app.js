@@ -640,14 +640,43 @@ const store = {
     render(`
       <h1>Meetings</h1>
       <p class="sub">Keep the know-how from team meetings: decisions and why, problems solved, lessons, action items.</p>
+      <div id="pendingConsent"></div>
       <div id="meet" class="stack"></div>
       <h2>Past meetings</h2>
       <div id="past" class="stack"><div class="skeleton"></div></div>`);
     meetingSetup();
     loadPastMeetings();
+    loadPendingConsent();
   }
 
+  async function loadPendingConsent() {
+    const el = document.getElementById("pendingConsent");
+    if (!el) return;
+    let list = [];
+    try { list = await api("/meetings/consent?pending_for=" + encodeURIComponent(state.user)); } catch (_) {}
+    el.innerHTML = list.map((c) => `
+      <div class="loop-note" style="margin-bottom:14px">${ic("users")}<span class="grow"><b>${esc(c.organiser)} wants to record “${esc(c.title)}”.</b><br>
+        <span class="small muted">Participants: ${esc(c.participants.join(", "))}</span>
+        <span class="row" style="margin-top:10px">
+          <button class="btn small primary" data-own-agree="${c.id}" type="button">${ic("check")}I agree to be recorded</button>
+          <button class="btn small" data-own-refuse="${c.id}" type="button">No</button></span></span></div>`).join("");
+    el.querySelectorAll("[data-own-agree],[data-own-refuse]").forEach((b) => b.addEventListener("click", async () => {
+      const id = b.dataset.ownAgree || b.dataset.ownRefuse;
+      try {
+        await api(`/meetings/consent/${id}/answer`, { method: "POST", json: { name: state.user, agree: !!b.dataset.ownAgree, by: state.user } });
+        toast(b.dataset.ownAgree ? "You agreed to be recorded" : "You said no. The meeting won't be recorded", b.dataset.ownAgree ? "check" : "x");
+        loadPendingConsent();
+      } catch (e) { toast(e.message); }
+    }));
+  }
+
+  // Consent: the organiser lists the participants; each person answers for themselves,
+  // on their own device or on this device after it is handed to them. One "no" blocks it.
+  let consentReq = null, consentPoll = null;
+  const hhmm = (iso) => new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+
   function meetingSetup() {
+    consentReq = null; clearInterval(consentPoll);
     const box = document.getElementById("meet");
     box.innerHTML = `
       <div class="stack">
@@ -656,29 +685,86 @@ const store = {
         <div><label class="field" for="mpeople">Participants</label>
           <input type="text" id="mpeople" placeholder="Names, separated by commas" value="${esc(state.user)}"></div>
         <div><label class="field">Language spoken</label>${langChips()}</div>
-        <div class="consent">
-          <label><input type="checkbox" id="consent">
-            <span>Everyone in this meeting agrees to the recording.<br>
-            <small class="muted" style="font-weight:400">Required by law in Germany. Audio is never stored, only the extracted knowledge.</small></span></label>
+        <div class="consent" id="consentBox">
+          <p style="margin:0 0 12px"><b style="font-weight:500">Everyone must agree before recording.</b><br>
+            <small class="muted">Each person confirms for themselves. Required by law in Germany. Audio is never stored, only the extracted knowledge.</small></p>
+          <button class="btn primary block" id="askConsent" type="button">${ic("users")}Ask everyone for consent</button>
         </div>
         <div class="row">
           <button class="btn primary grow" id="mrec" disabled>${ic("mic")}Record</button>
           <button class="btn grow" id="mtype" disabled>${ic("keyboard")}Paste notes</button>
         </div>
       </div>`;
-    const consent = document.getElementById("consent");
-    consent.addEventListener("change", () => {
-      document.getElementById("mrec").disabled = !consent.checked;
-      document.getElementById("mtype").disabled = !consent.checked;
+    document.getElementById("askConsent").addEventListener("click", async () => {
+      const people = document.getElementById("mpeople").value.split(",").map((x) => x.trim()).filter(Boolean);
+      if (!people.length) return toast("Add the participants first");
+      try {
+        consentReq = await api("/meetings/consent", { method: "POST", json: {
+          title: document.getElementById("mtitle").value.trim() || "Team meeting", organiser: state.user, participants: people } });
+        document.getElementById("mtitle").disabled = document.getElementById("mpeople").disabled = true;
+        renderConsent();
+        consentPoll = setInterval(async () => {
+          if (!document.getElementById("consentBox") || !consentReq) return clearInterval(consentPoll);
+          try { const fresh = await api("/meetings/consent/" + consentReq.id); if (JSON.stringify(fresh.answers) !== JSON.stringify(consentReq.answers)) { consentReq = fresh; renderConsent(); } } catch (_) {}
+        }, 2000);
+      } catch (e) { toast(e.message); }
     });
     document.getElementById("mrec").addEventListener("click", meetingRecord);
     document.getElementById("mtype").addEventListener("click", meetingType);
   }
 
+  function renderConsent() {
+    const c = consentReq, box = document.getElementById("consentBox");
+    if (!c || !box) return;
+    const ready = c.status === "ready", no = c.status === "declined";
+    box.innerHTML = `
+      <div class="row-between"><span class="eyebrow" style="margin:0">Consent · ${esc(c.title)}</span>
+        <span class="tag ${ready ? "recurring" : no ? "high" : "warn"}">${ready ? "Everyone agreed" : no ? "Not allowed" : "Waiting"}</span></div>
+      <div class="list consent-list">${c.participants.map((p) => {
+        const a = c.answers[p];
+        return `<div class="list-item">${avatar(p)}<span class="grow"><b style="font-weight:500">${esc(p)}</b><br>
+          <small class="muted">${a ? (a.agreed ? `Agreed ${hhmm(a.at)} · ${a.on}` : `Said no ${hhmm(a.at)}`) : "Not answered yet"}</small></span>
+          ${a ? `<span class="tag ${a.agreed ? "recurring" : "high"}">${a.agreed ? "Agreed" : "No"}</span>` : no ? "" : `
+            <button class="btn small primary" data-agree="${esc(p)}" type="button">${ic("check")}I agree to be recorded</button>
+            <button class="btn small" data-refuse="${esc(p)}" type="button" aria-label="${esc(p)} says no">No</button>`}</div>`;
+      }).join("")}</div>
+      ${no ? `<p class="login-err" style="margin-top:12px">${esc(c.declined_by.join(", "))} said no. This meeting can't be recorded.</p>
+        <button class="btn block" id="consentRestart" type="button" style="margin-top:8px">Start over</button>`
+        : ready ? "" : `<p class="small muted" style="margin:12px 0 0">Others can also answer on their own phone: Record → Record a meeting.</p>`}`;
+    document.getElementById("mrec").disabled = document.getElementById("mtype").disabled = !ready;
+    box.querySelectorAll("[data-agree],[data-refuse]").forEach((b) => b.addEventListener("click", () =>
+      consentAnswer(b.dataset.agree || b.dataset.refuse, !!b.dataset.agree)));
+    const rs = document.getElementById("consentRestart"); if (rs) rs.addEventListener("click", meetingSetup);
+  }
+
+  // Own name: answer directly. Someone else's name: hand the device over, that person confirms.
+  function consentAnswer(name, agree) {
+    const send = async (shared) => {
+      try {
+        consentReq = await api(`/meetings/consent/${consentReq.id}/answer`, { method: "POST",
+          json: { name, agree, by: state.user, shared_device: shared } });
+        renderConsent();
+      } catch (e) { toast(e.message); }
+    };
+    if (name === state.user) return send(false);
+    modal.innerHTML = `
+      <div class="eyebrow">${ic("users")}Hand the device to ${esc(name)}</div>
+      <h2>${esc(name)}, do you agree that this meeting is recorded?</h2>
+      <p class="sub">Only ${esc(name)} taps below. Nobody can agree for someone else.</p>
+      <form method="dialog" class="stack">
+        <button class="btn primary block" value="yes" id="handYes">${ic("check")}I am ${esc(name)} and I agree to be recorded</button>
+        <button class="btn block" value="no" id="handNo">I am ${esc(name)} and I say no</button>
+        <button class="btn ghost block" value="cancel">Cancel</button>
+      </form>`;
+    modal.showModal();
+    modal.onclose = () => { if (modal.returnValue === "yes") send(true); else if (modal.returnValue === "no") { agree = false; send(true); } };
+  }
+
   function meetingMeta() {
     return {
-      title: document.getElementById("mtitle").value.trim() || "Team meeting",
+      title: (consentReq && consentReq.title) || document.getElementById("mtitle").value.trim() || "Team meeting",
       people: document.getElementById("mpeople").value.trim(),
+      consent: consentReq && consentReq.id,
     };
   }
 
@@ -692,8 +778,10 @@ const store = {
     } catch (e) { return toast("Microphone blocked"); }
     activeRecorder = rec;
     box.innerHTML = `
-      <div class="rec-bar"><span class="dot"></span> Recording · <span id="mtime">00:00</span> <span class="grow"></span>${esc(meta.title)}</div>
-      <p class="sub center" style="margin-top:12px">Everyone can see this red indicator while recording.</p>
+      <div class="rec-bar live" role="status"><span class="dot"></span> Recording · <span id="mtime">00:00</span> <span class="grow"></span>${esc(meta.title)}</div>
+      <div class="say-aloud">${ic("message-square")}<span><span class="eyebrow" style="margin:0 0 4px">Say this out loud now</span>
+        <b>“Everyone agrees this meeting is being recorded.”</b></span></div>
+      <p class="sub center" style="margin-top:12px">The red bar stays visible the whole time you record.</p>
       <button class="btn primary block" id="mstop">${ic("square")}Stop and extract knowledge</button>
       <button class="btn ghost block" id="mcancel">Cancel</button>`;
     document.getElementById("mcancel").addEventListener("click", () => { rec.cancel(); activeRecorder = null; meetingSetup(); });
@@ -703,7 +791,7 @@ const store = {
       const form = new FormData();
       form.append("title", meta.title);
       form.append("participants", meta.people);
-      form.append("consent", "true");
+      form.append("consent_request", meta.consent);
       if (state.lang) form.append("language", state.lang);
       form.append("audio", blob, "meeting." + ext);
       meetingSubmit(form);
@@ -724,7 +812,7 @@ const store = {
       const form = new FormData();
       form.append("title", meta.title);
       form.append("participants", meta.people);
-      form.append("consent", "true");
+      form.append("consent_request", meta.consent);
       form.append("text", t);
       meetingSubmit(form);
     });
@@ -775,6 +863,8 @@ const store = {
       const list = await api("/meetings");
       el.innerHTML = list.length ? list.map((m) => `
         <details class="result-sec"><summary><b>${esc(m.title)}</b> <span class="muted small">· ${fmtDate(m.date)} · ${esc(m.participants.join(", "))}</span></summary>
+          ${(m.consent_log || []).length ? `<div class="consent-log"><span class="eyebrow" style="margin:0">Consent log</span>
+            ${m.consent_log.map((x) => `<span>${esc(x.name)} agreed ${fmtDate(x.agreed_at)} ${hhmm(x.agreed_at)} · ${esc(x.on)}</span>`).join("")}</div>` : ""}
           <div style="margin-top:10px">${meetingResultHTML(m)}</div></details>`).join("")
         : `<div class="empty"><span class="ei">${ic("users")}</span>No meetings yet. Record your next team meeting to keep what was decided and why.</div>`;
     } catch (e) { el.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
