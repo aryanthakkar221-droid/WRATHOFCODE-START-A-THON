@@ -1,0 +1,281 @@
+"""AI layer: structure shift notes, answer questions, extract meeting knowledge.
+
+Uses OpenAI when OPENAI_API_KEY is set (structured JSON outputs, so replies always parse).
+Without a key, or if a call fails, it falls back to simple offline rules, so the demo
+never dies on stage.
+"""
+import json
+import logging
+import os
+import re
+from typing import Any, Dict, List, Optional
+
+log = logging.getLogger("knowflow.ai")
+
+MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+
+_client = None
+
+
+def client():
+    global _client
+    if _client is None and os.environ.get("OPENAI_API_KEY"):
+        from openai import OpenAI
+
+        _client = OpenAI(timeout=60.0, max_retries=2)
+    return _client
+
+
+def ai_enabled() -> bool:
+    return client() is not None
+
+
+def _call_json(system: str, user: str, schema: Dict[str, Any], name: str = "result") -> Optional[Dict[str, Any]]:
+    c = client()
+    if c is None:
+        return None
+    try:
+        resp = c.chat.completions.create(
+            model=MODEL,
+            temperature=0.2,
+            messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+            response_format={"type": "json_schema", "json_schema": {"name": name, "strict": True, "schema": schema}},
+        )
+        choice = resp.choices[0]
+        if choice.finish_reason != "stop" or getattr(choice.message, "refusal", None):
+            log.warning("OpenAI finish_reason=%s, using offline fallback", choice.finish_reason)
+            return None
+        return json.loads(choice.message.content)
+    except Exception as e:  # noqa: BLE001 - the demo must keep working
+        log.warning("OpenAI call failed (%s), using offline fallback", e)
+        return None
+
+
+def _nullable(t: str) -> Dict[str, Any]:
+    return {"type": [t, "null"]}
+
+
+# ---------------------------------------------------------------- structuring
+
+STRUCTURE_SYSTEM = (
+    "You are an assistant for a factory shift log (Schichtbuch). Turn this worker's spoken "
+    "shift report into a knowledge card. Keep the worker's practical tips and reasons (the "
+    "'why'). If something is not mentioned, use null. Do not invent facts. Write in clear, "
+    "short sentences, in the same language the worker used. kind is 'mistake' if the report "
+    "is mainly about something that went wrong and should not be repeated, otherwise 'fix'. "
+    "tags are 1-4 short lowercase keywords for the problem type (e.g. 'spindle', 'noise')."
+)
+
+CARD_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "machine": _nullable("string"),
+        "process": _nullable("string"),
+        "kind": {"type": "string", "enum": ["fix", "mistake"]},
+        "problem": _nullable("string"),
+        "cause": _nullable("string"),
+        "solution": _nullable("string"),
+        "warning": _nullable("string"),
+        "tags": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": ["machine", "process", "kind", "problem", "cause", "solution", "warning", "tags"],
+    "additionalProperties": False,
+}
+
+
+def structure_entry(transcript: str, machine_hint: Optional[str] = None) -> Dict[str, Any]:
+    user = transcript if not machine_hint else "Machine: %s\n\n%s" % (machine_hint, transcript)
+    out = _call_json(STRUCTURE_SYSTEM, user, CARD_SCHEMA, "card")
+    if out is None:
+        out = _offline_structure(transcript)
+    if machine_hint:
+        out["machine"] = machine_hint
+    out["tags"] = [t.lower().strip() for t in (out.get("tags") or []) if t.strip()][:4]
+    return out
+
+
+_CAUSE_WORDS = ("because", "weil", "cause", "ursache", "due to", "da ")
+_FIX_WORDS = ("fixed", "solved", "solution", "gelöst", "replace", "clean", "turn", "check", "let it", "tausch", "reinig")
+_WARN_WORDS = ("watch out", "careful", "never", "achtung", "vorsicht", "nie ", "don't", "do not")
+_STOP = set(("the a an and or to of in on at is was it for with my we i our this that be at how what why when where "
+              "who which do does did can could should you your there then than make makes again der die das und "
+              "ist was wie wenn ich mit bei auf").split())
+
+
+def _offline_structure(text: str) -> Dict[str, Any]:
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+|\n+", text) if s.strip()]
+    pick = lambda words: next((s for s in sentences if any(w in s.lower() for w in words)), None)  # noqa: E731
+    warning = pick(_WARN_WORDS)
+    cause = pick(_CAUSE_WORDS)
+    solution = pick(_FIX_WORDS)
+    problem = next((s for s in sentences if s not in (warning, cause, solution)), sentences[0] if sentences else None)
+    words = [w for w in re.findall(r"[a-zäöüß]{4,}", (problem or "").lower()) if w not in _STOP]
+    return {
+        "machine": None,
+        "process": None,
+        "kind": "mistake" if re.search(r"mistake|fehler|went wrong|schiefgelaufen", text, re.I) else "fix",
+        "problem": problem,
+        "cause": cause,
+        "solution": solution,
+        "warning": warning,
+        "tags": words[:3],
+    }
+
+
+# ---------------------------------------------------------------- answering
+
+ASK_SYSTEM = (
+    "You help a new factory employee. Answer the question using only the knowledge cards "
+    "provided. Give the steps in order, mention the warning, and for each step cite the card "
+    "id it came from. Prefer cards with higher confidence and skip cards marked outdated "
+    "unless nothing else fits. If the cards don't answer it, set answered=false, leave steps "
+    "empty and in suggest_ask name the author who knows that machine best (or null). "
+    "Answer in the language of the question."
+)
+
+ASK_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "answered": {"type": "boolean"},
+        "summary": {"type": "string"},
+        "steps": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"text": {"type": "string"}, "card_id": {"type": "integer"}},
+                "required": ["text", "card_id"],
+                "additionalProperties": False,
+            },
+        },
+        "warning": _nullable("string"),
+        "suggest_ask": _nullable("string"),
+    },
+    "required": ["answered", "summary", "steps", "warning", "suggest_ask"],
+    "additionalProperties": False,
+}
+
+
+def _card_brief(c: Dict[str, Any]) -> Dict[str, Any]:
+    keys = ("id", "date", "author", "author_years_experience", "machine", "kind", "problem",
+            "cause", "solution", "warning", "tags", "confidence", "outdated")
+    return {k: c.get(k) for k in keys}
+
+
+def answer_question(question: str, cards: List[Dict[str, Any]]) -> Dict[str, Any]:
+    if cards:
+        payload = json.dumps([_card_brief(c) for c in cards], ensure_ascii=False)
+        out = _call_json(ASK_SYSTEM, "Knowledge cards:\n%s\n\nQuestion: %s" % (payload, question), ASK_SCHEMA, "answer")
+        if out is not None:
+            valid = {c["id"] for c in cards}
+            out["steps"] = [s for s in out["steps"] if s["card_id"] in valid]
+            return out
+    return _offline_answer(question, cards)
+
+
+def _tokens(s: str) -> set:
+    return {w for w in re.findall(r"[a-z0-9äöüß\-]{3,}", s.lower()) if w not in _STOP}
+
+
+def rank_cards(question: str, cards: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    q = _tokens(question)
+    qnorm = re.sub(r"\s+", "", question.lower())
+    scored = []
+    for c in cards:
+        hay = " ".join(str(c.get(k) or "") for k in ("machine", "process", "problem", "cause", "solution", "warning"))
+        hay += " " + " ".join(c.get("tags") or [])
+        score = float(len(q & _tokens(hay)))
+        if c.get("machine") and re.sub(r"\s+", "", c["machine"].lower()) in qnorm:
+            score += 3
+        if score < 1:  # needs a real match; confidence only breaks ties
+            continue
+        score += c["confidence"] - (1 if c["outdated"] else 0)
+        if score >= 1.5:
+            scored.append((score, c))
+    scored.sort(key=lambda x: -x[0])
+    return [c for _, c in scored]
+
+
+def _offline_answer(question: str, cards: List[Dict[str, Any]]) -> Dict[str, Any]:
+    hits = [c for c in rank_cards(question, cards) if c.get("solution")][:3]
+    if not hits:
+        authors = [c["author"] for c in cards]
+        return {
+            "answered": False,
+            "summary": "No entry answers this yet. It was added to the open questions for the experts.",
+            "steps": [],
+            "warning": None,
+            "suggest_ask": max(set(authors), key=authors.count) if authors else None,
+        }
+    return {
+        "answered": True,
+        "summary": hits[0]["problem"] or "Here is what the team has logged.",
+        "steps": [{"text": c["solution"], "card_id": c["id"]} for c in hits],
+        "warning": next((c["warning"] for c in hits if c.get("warning")), None),
+        "suggest_ask": None,
+    }
+
+
+# ---------------------------------------------------------------- meetings
+
+MEETING_SYSTEM = (
+    "From this meeting transcript, extract decisions (decision + reason), problems (problem + "
+    "solution, with the machine if one is named), lessons_learned, and action_items (task, "
+    "owner, due). Only include points useful later to someone who was not in the meeting. "
+    "Skip small talk. Do not invent facts; use null for unknown owner/due/machine."
+)
+
+MEETING_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "summary": {"type": "string"},
+        "decisions": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"decision": {"type": "string"}, "reason": _nullable("string")},
+                "required": ["decision", "reason"],
+                "additionalProperties": False,
+            },
+        },
+        "problems": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "problem": {"type": "string"},
+                    "solution": _nullable("string"),
+                    "machine": _nullable("string"),
+                },
+                "required": ["problem", "solution", "machine"],
+                "additionalProperties": False,
+            },
+        },
+        "lessons_learned": {"type": "array", "items": {"type": "string"}},
+        "action_items": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"task": {"type": "string"}, "owner": _nullable("string"), "due": _nullable("string")},
+                "required": ["task", "owner", "due"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["summary", "decisions", "problems", "lessons_learned", "action_items"],
+    "additionalProperties": False,
+}
+
+
+def extract_meeting(transcript: str) -> Dict[str, Any]:
+    out = _call_json(MEETING_SYSTEM, transcript, MEETING_SCHEMA, "meeting")
+    if out is not None:
+        return out
+    sents = [s.strip() for s in re.split(r"(?<=[.!?])\s+|\n+", transcript) if s.strip()]
+    has = lambda s, *w: any(x in s.lower() for x in w)  # noqa: E731
+    return {
+        "summary": sents[0] if sents else "",
+        "decisions": [{"decision": s, "reason": None} for s in sents if has(s, "decided", "we will", "beschlossen", "entschieden")],
+        "problems": [{"problem": s, "solution": None, "machine": None} for s in sents if has(s, "problem", "issue", "broke", "jam")],
+        "lessons_learned": [s for s in sents if has(s, "lesson", "learned", "next time", "gelernt", "nächstes mal")],
+        "action_items": [{"task": s, "owner": None, "due": None} for s in sents if has(s, "will ", "todo", "to do", "bis ")],
+    }
