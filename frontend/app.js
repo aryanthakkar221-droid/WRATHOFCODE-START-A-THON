@@ -126,7 +126,7 @@ const store = {
       ["Watch out", c.warning, "warning"],
     ].filter((r) => r[1] && !(opts.titleFromProblem && r[2] === "problem"));
     const status = c.status === "approved"
-      ? `<span class="badge ok">✓ Approved${c.approved_by && c.approved_by !== c.author ? " by " + esc(c.approved_by) : ""}</span>`
+      ? `<span class="badge ok">✓ Approved by ${esc(c.approved_by || c.author)}</span>`
       : `<span class="badge draft">Draft · waiting for approval</span>`;
     const conf = Math.round((c.confidence || 0.5) * 100);
     const votes = c.worked_count + c.failed_count;
@@ -137,7 +137,7 @@ const store = {
           ${c.machine ? `<a class="badge machine" href="#/m/${esc(c.machine_id)}">⚙️ ${esc(c.machine)}</a>` : ""}
           ${kindCls || c.kind !== "fix" ? `<span class="badge ${kindCls}">${kindLabel}</span>` : ""}
           ${c.source === "meeting" ? `<span class="badge meeting">From meeting</span>` : ""}
-          ${c.outdated ? `<span class="badge bad">⚠ Outdated</span>` : ""}
+          ${c.failed_count > c.worked_count ? `<span class="badge bad">⚠ Often didn't work</span>` : c.outdated ? `<span class="badge bad">⚠ Outdated</span>` : ""}
         </div>
         <div class="badges">${status}</div>
       </div>
@@ -153,14 +153,15 @@ const store = {
           <small>${c.author_years_experience ? c.author_years_experience + " years experience · " : ""}${fmtDate(c.date)}${c.last_confirmed ? " · last confirmed " + ago(c.last_confirmed) : ""}</small>
         </div>
         ${c.status === "approved" ? `<div class="small muted" title="Share of people who said it worked">
-          ${votes ? `${c.worked_count}/${votes} worked` : "No votes yet"}
+          ${c.worked_count ? `Worked for ${c.worked_count} ${c.worked_count === 1 ? "person" : "people"}` : votes ? "Not confirmed yet" : "No votes yet"}
+          ${c.failed_count ? `<br><span style="color:var(--danger)">Didn't work for ${c.failed_count}</span>` : ""}
           <div class="confidence"><i style="width:${conf}%"></i></div></div>` : ""}
       </div>
       ${opts.feedback && c.status === "approved" ? `
       <div class="feedback">
         <span class="label">Did this work?</span>
-        <button class="btn small" data-fb="1" data-id="${c.id}">👍 Yes</button>
-        <button class="btn small" data-fb="0" data-id="${c.id}">👎 No</button>
+        <button class="btn small" data-fb="1" data-id="${c.id}">👍 Worked</button>
+        <button class="btn small" data-fb="0" data-id="${c.id}">👎 Didn't work</button>
       </div>` : ""}
       ${opts.approve && c.status !== "approved" ? `
       <div class="card-actions">
@@ -336,7 +337,7 @@ const store = {
       <div class="stack">
         <div>
           <label class="field" for="machine">Machine</label>
-          <input type="text" id="machine" list="machineList" value="${esc(last)}" placeholder="e.g. CNC 3" autocomplete="off">
+          <input type="text" id="machine" list="machineList" value="${esc(last)}" placeholder="e.g. Packaging Machine" autocomplete="off">
           <datalist id="machineList">${machineOpts.map((m) => `<option value="${esc(m)}">`).join("")}</datalist>
         </div>
         <div><label class="field">I'm speaking</label>${langChips()}</div>
@@ -471,10 +472,10 @@ const store = {
 
   // ------------------------------------------------------------ screen: ask
   const SUGGESTIONS = [
-    "CNC 3 makes a noise when starting, what do I do?",
-    "Packaging line film keeps jamming",
-    "Alarm E-217 on CNC 1",
-    "Press 2 parts out of tolerance",
+    "The Packaging Machine jams on Monday morning. What do I do?",
+    "Machine 1 stops with alarm E-217",
+    "Press 2 parts come out the wrong size",
+    "The compressor gets hot and switches off",
   ];
 
   function screenAsk(preset) {
@@ -678,15 +679,15 @@ const store = {
         api("/stats"), api("/alerts"), api("/risk-map"), api("/entries?status=draft"), api("/open-questions"),
       ]);
       const icon = { recurring_problem: "🔁", knowledge_risk: "👤", disputed_fix: "👎" };
-      const title = { recurring_problem: "Recurring problem", knowledge_risk: "Knowledge risk", disputed_fix: "Disputed fix" };
+      const title = { recurring_problem: "Keeps happening", knowledge_risk: "Only one person knows", disputed_fix: "Fix often fails" };
       render(`
         <h1>Dashboard</h1>
         <p class="sub">Where knowledge is at risk, and what keeps coming back.</p>
         <div class="stats">
           <div class="stat"><b>${stats.cards_approved}</b><span>knowledge cards</span></div>
           <div class="stat"><b>${stats.experts}</b><span>experts sharing</span></div>
-          <div class="stat"><b>${stats.confirmed_fixes}</b><span>times a fix worked</span></div>
-          <div class="stat"><b>${stats.open_questions}</b><span>open questions</span></div>
+          <div class="stat"><b>${stats.confirmed_fixes}</b><span>times a tip helped</span></div>
+          <div class="stat"><b>${stats.open_questions}</b><span>questions without answer</span></div>
         </div>
 
         <h2>Alerts</h2>
@@ -696,11 +697,11 @@ const store = {
             <span><b>${title[a.type] || "Alert"}</b>${esc(a.message)}</span>
           </a>`).join("") : `<div class="empty"><span class="ei">✅</span>No alerts right now.</div>`}</div>
 
-        <h2>Knowledge-risk map</h2>
-        <p class="sub small">Machines coloured by how many people know them. Red: only experts retiring within a year.</p>
+        <h2>Who knows which machine?</h2>
+        <p class="sub small">Red: only people who retire soon know how to fix it.</p>
         <div class="risk-grid">${risk.map((r) => `
           <a class="risk ${r.risk}" href="#/m/${esc(r.machine_id)}">
-            <span class="lvl">${r.risk} risk</span>
+            <span class="lvl">${{ high: "At risk", medium: "Watch", low: "Safe" }[r.risk]}</span>
             <b>${esc(r.machine)}</b>
             <span class="small">${r.people_who_know_it} ${r.people_who_know_it === 1 ? "person knows" : "people know"} it</span>
             <span class="small muted">${r.experts_retiring_soon.length ? "Retiring: " + esc(r.experts_retiring_soon.join(", ")) : esc(r.experts.join(", "))}</span>
@@ -710,14 +711,14 @@ const store = {
         <div class="stack">${drafts.length ? drafts.map((c) => cardHTML(c, { approve: true, showTranscript: true, titleFromProblem: true })).join("")
           : `<div class="empty"><span class="ei">📝</span>No drafts. New shift logs show up here until an expert approves them.</div>`}</div>
 
-        <h2>Open questions</h2>
+        <h2>Questions without an answer yet</h2>
         <div class="stack">${openQ.length ? openQ.map((q) => `
           <div class="list-item"><span style="font-size:22px">❓</span><span class="grow">${esc(q.question)}<br>
             <small class="muted">${q.asked_by ? esc(q.asked_by) + " · " : ""}${ago(q.date)}</small></span></div>`).join("")
           : `<div class="empty"><span class="ei">🙌</span>Every question has an answer.</div>`}</div>
 
-        <h2>Machine QR codes</h2>
-        <p class="sub small">Print one for each machine. Scanning it opens the experts' fixes for that machine.</p>
+        <h2>QR codes for the machines</h2>
+        <p class="sub small">Print one and stick it on the machine. Scan it with a phone to see the fixes.</p>
         <div class="stack">${state.machines.map((m) => `
           <a class="list-item" href="#/sign/${esc(m.machine_id)}"><span style="font-size:22px">⚙️</span>
             <span class="grow"><b>${esc(m.machine)}</b><br><small class="muted">${m.cards} cards · ${m.experts} ${m.experts === 1 ? "expert" : "experts"}</small></span>
@@ -744,7 +745,7 @@ const store = {
       render(`
         <div class="machine-hero">
           <h1>⚙️ ${esc(m.machine)}</h1>
-          <p>${m.cards.length} proven answers from ${esc(m.experts.join(", "))}</p>
+          <p>${m.cards.length} tips from ${esc(m.experts.join(", "))}</p>
         </div>
         ${m.alerts.map((a) => `<div class="alert ${a.severity}" style="margin-bottom:10px"><span class="ai">${a.type === "recurring_problem" ? "🔁" : a.type === "knowledge_risk" ? "👤" : "👎"}</span><span>${esc(a.message)}</span></div>`).join("")}
         <a class="btn block" href="#/ask" style="margin-bottom:14px">🔎 Ask a question about this machine</a>
@@ -758,10 +759,10 @@ const store = {
     const m = state.machines.find((x) => x.machine_id === id) || { machine: id };
     render(`
       <div class="sign">
-        <div class="muted" style="font-weight:700;letter-spacing:.08em">KNOWFLOW · SCAN FOR EXPERT FIXES</div>
+        <div class="muted" style="font-weight:700;letter-spacing:.08em">KNOWFLOW · SCAN ME FOR TIPS</div>
         <h1>${esc(m.machine)}</h1>
         <img src="${API}/machine/${encodeURIComponent(id)}/qr.svg" alt="QR code for ${esc(m.machine)}">
-        <p class="muted">Scan with your phone camera to see how colleagues solved problems on this machine.</p>
+        <p class="muted">Problem with this machine? Scan with your phone camera to see how colleagues fixed it.</p>
       </div>
       <div class="row no-print" style="margin-top:14px">
         <button class="btn primary grow" onclick="window.print()">🖨️ Print sign</button>

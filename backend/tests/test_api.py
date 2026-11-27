@@ -20,34 +20,35 @@ def setup_module(_):
 
 def test_health():
     h = client.get("/health").json()
-    assert h["ok"] and h["cards"] == 15
+    assert h["ok"] and h["cards"] == 16
 
 
 def test_alerts_tell_the_demo_story():
     alerts = client.get("/alerts").json()
     msgs = " | ".join(a["message"] for a in alerts)
-    assert any(a["type"] == "recurring_problem" and a["machine_id"] == "cnc-3" and a["count"] == 3 for a in alerts), msgs
+    assert any(a["type"] == "recurring_problem" and a["machine_id"] == "packaging-machine" and a["count"] == 3 for a in alerts), msgs
+    assert any(a["type"] == "knowledge_risk" and a["expert"] == "Herr Müller" and a["machine_id"] == "packaging-machine" for a in alerts), msgs
     assert any(a["type"] == "knowledge_risk" and a["expert"] == "Herr Müller" and a["machine_id"] == "press-2" for a in alerts), msgs
     assert any(a["type"] == "disputed_fix" for a in alerts), msgs
 
 
 def test_record_shift_then_approve_makes_it_4x():
     r = client.post("/entries", data={
-        "author": "Herr Müller", "machine": "CNC 3",
-        "text": "Spindle noise at startup again this morning. Because the hall was cold. "
-                "Let it warm up ten minutes at low speed, then it was fine. Never run full speed cold."})
+        "author": "Herr Müller", "machine": "Packaging Machine",
+        "text": "The film jammed again this Monday morning. Because the hall was cold over the weekend. "
+                "Let it warm up ten minutes at low speed, then checked the roll tension. Never start at full speed cold."})
     assert r.status_code == 200, r.text
     card = r.json()["card"]
-    assert card["status"] == "draft" and card["machine_id"] == "cnc-3" and card["author_years_experience"] == 32
-    client.patch("/cards/%d" % card["id"], json={"tags": ["spindle", "noise"]})
+    assert card["status"] == "draft" and card["machine_id"] == "packaging-machine" and card["author_years_experience"] == 32
+    client.patch("/cards/%d" % card["id"], json={"tags": ["jam", "monday"]})
     a = client.post("/cards/%d/approve" % card["id"], json={"expert": "Herr Müller"}).json()
     assert a["status"] == "approved" and a["approved_by"] == "Herr Müller" and not a["has_audio"]
-    rec = [x for x in client.get("/alerts").json() if x["type"] == "recurring_problem" and x["machine_id"] == "cnc-3"]
+    rec = [x for x in client.get("/alerts").json() if x["type"] == "recurring_problem" and x["machine_id"] == "packaging-machine"]
     assert rec[0]["count"] == 4
 
 
 def test_new_employee_asks():
-    r = client.post("/ask", json={"question": "CNC 3 makes a noise when starting, what do I do?", "asked_by": "Ahmed"}).json()
+    r = client.post("/ask", json={"question": "The Packaging Machine jams on Monday morning, what do I do?", "asked_by": "Ahmed"}).json()
     assert r["answered"] and r["steps"]
     assert r["steps"][0]["source"]["author"] == "Herr Müller"
     assert "warm" in " ".join(s["text"] for s in r["steps"]).lower()
@@ -60,13 +61,13 @@ def test_unanswered_goes_to_open_questions():
 
 
 def test_qr_machine_page_and_feedback():
-    m = client.get("/machine/CNC 3").json()
-    assert m["machine"] == "CNC 3" and m["cards"] and all(c["status"] == "approved" for c in m["cards"])
+    m = client.get("/machine/Packaging Machine").json()
+    assert m["machine"] == "Packaging Machine" and m["cards"] and all(c["status"] == "approved" for c in m["cards"])
     cid = m["cards"][0]["id"]
     before = m["cards"][0]["worked_count"]
     after = client.post("/cards/%d/feedback" % cid, json={"worked": True}).json()
     assert after["worked_count"] == before + 1 and after["last_confirmed"]
-    svg = client.get("/machine/cnc-3/qr.svg")
+    svg = client.get("/machine/packaging-machine/qr.svg")
     assert svg.status_code == 200 and svg.text.startswith("<svg")
     assert client.get("/machine/does-not-exist").status_code == 404
 
@@ -121,4 +122,18 @@ def test_silence_transcripts_are_caught():
 def test_open_questions_for_expert_puts_their_machines_first():
     client.post("/ask", json={"question": "How do I refill the coffee machine in hall Z?"})
     qs = client.get("/open-questions", params={"expert": "Herr Weber"}).json()
-    assert qs[0]["machine_id"] == "welding-robot"
+    assert qs[0]["machine_id"] == "compressor"
+
+
+def test_demo_seed_has_enough_approved_cards_on_the_four_machines():
+    cards = client.get("/entries", params={"status": "approved"}).json()
+    assert len(cards) >= 15
+    assert {c["machine_id"] for c in cards} == {"packaging-machine", "machine-1", "press-2", "compressor"}
+    jams = [c for c in cards if c["machine_id"] == "packaging-machine" and "jam" in c["tags"]]
+    assert len(jams) >= 3 and all(c["author"] == "Herr Müller" and c["author_years_experience"] == 32 for c in jams)
+
+
+def test_machine_link_in_browser_opens_app_page():
+    r = client.get("/machine/Packaging Machine", headers={"accept": "text/html"}, follow_redirects=False)
+    assert r.status_code == 302 and r.headers["location"] == "/#/m/packaging-machine"
+    assert client.get("/machine/packaging-machine").json()["machine"] == "Packaging Machine"

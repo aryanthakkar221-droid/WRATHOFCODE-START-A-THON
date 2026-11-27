@@ -89,10 +89,14 @@ CARD_SCHEMA = {
 
 
 def structure_entry(transcript: str, machine_hint: Optional[str] = None,
-                    known_machines: Optional[List[str]] = None) -> Dict[str, Any]:
+                    known_machines: Optional[List[str]] = None,
+                    known_tags: Optional[List[str]] = None) -> Dict[str, Any]:
     user = transcript if not machine_hint else "Machine: %s\n\n%s" % (machine_hint, transcript)
     if known_machines and not machine_hint:
         user = "Known machines: %s\n\nShift report:\n%s" % (", ".join(known_machines), user)
+    if known_tags:
+        user = ("Tags already used (reuse the same tag for the same kind of problem, e.g. any "
+                "jam is 'jam', so repeats can be spotted): %s\n\n%s" % (", ".join(known_tags), user))
     out = _call_json(STRUCTURE_SYSTEM, user, CARD_SCHEMA, "card")
     if out is None:
         out = _offline_structure(transcript)

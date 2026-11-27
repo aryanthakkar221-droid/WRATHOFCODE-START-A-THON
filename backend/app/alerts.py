@@ -35,7 +35,7 @@ def compute_alerts(cards: List[Dict[str, Any]], experts: Dict[str, Dict[str, Any
             "tag": tag,
             "count": len(group),
             "card_ids": sorted(ids),
-            "message": "%s: '%s' %dx in the last %d days" % (group[0]["machine"], tag, len(group), RECURRING_DAYS),
+            "message": "%s: %s problem %d times in the last %d days" % (group[0]["machine"], tag, len(group), RECURRING_DAYS),
         })
 
     # 2. Knowledge risk: problems on a machine solved by only one person.
@@ -67,7 +67,7 @@ def compute_alerts(cards: List[Dict[str, Any]], experts: Dict[str, Dict[str, Any
                 "machine": c["machine"],
                 "machine_id": c["machine_id"],
                 "card_ids": [c["id"]],
-                "message": "Fix for '%s' on %s failed more often than it worked" % (c["problem"], c["machine"]),
+                "message": "The fix for '%s' on %s often didn't work" % (c["problem"].rstrip("."), c["machine"]),
             })
 
     order = {"high": 0, "medium": 1, "low": 2}

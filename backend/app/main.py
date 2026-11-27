@@ -16,7 +16,7 @@ import segno
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -139,7 +139,11 @@ async def create_entry(
     transcript, audio_path = await _text_from(text, audio, language)
     with db.conn() as c:
         known = [r[0] for r in c.execute("SELECT DISTINCT machine FROM cards WHERE machine IS NOT NULL").fetchall()]
-    structured = ai.structure_entry(transcript, machine, known)
+        tag_rows = c.execute("SELECT tags FROM cards WHERE status='approved'" +
+                             (" AND machine_id=?" if machine else ""),
+                             ([db.slugify(machine)] if machine else [])).fetchall()
+    known_tags = sorted({t for r in tag_rows for t in json.loads(r[0])})
+    structured = ai.structure_entry(transcript, machine, known, known_tags)
     if not any(structured.get(k) for k in ("problem", "solution", "warning")):
         _delete_audio(audio_path)
         raise HTTPException(422, "I heard you, but found no problem, fix or tip in it. "
@@ -339,10 +343,12 @@ def machines() -> List[Dict[str, Any]]:
 
 
 @app.get("/machine/{machine_id}", tags=["machines"])
-def machine(machine_id: str) -> Dict[str, Any]:
+def machine(machine_id: str, request: Request):
     """What the QR code on the machine opens: all approved cards for that machine, proven
-    fixes first."""
+    fixes first. A browser opening /machine/<id> directly is sent to the app page."""
     mid = db.slugify(machine_id)
+    if "text/html" in request.headers.get("accept", ""):
+        return RedirectResponse("/#/m/" + mid, status_code=302)
     with db.conn() as c:
         cards = db.list_cards(c, mid, "approved")
         if not cards:
