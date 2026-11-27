@@ -312,3 +312,12 @@ def test_ask_small_talk_not_sent_to_experts():
 def test_tokens_daily_for_dashboard():
     d = client.get("/tokens/daily").json()
     assert d["days"] and d["month_total"] == sum(x["tokens"] for x in d["days"]) and d["month_total"] > 0
+
+
+def test_ask_follow_up_uses_session_history():
+    first = "The packaging machine jams, what do I do?"
+    r1 = client.post("/ask", json={"question": first, "asked_by": "Ahmed"}).json()
+    hist = [{"role": "user", "text": first}, {"role": "assistant", "text": r1["summary"]}]
+    r2 = client.post("/ask", json={"question": "and what if that doesn't help?", "asked_by": "Ahmed", "history": hist}).json()
+    assert r2["asked"] == "and what if that doesn't help?" and "packaging" in r2["question"].lower()
+    assert not r2.get("general")

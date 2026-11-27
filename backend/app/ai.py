@@ -81,6 +81,37 @@ def is_work_question(question: str) -> bool:
     return bool(_WORK.search(question)) or len(question.split()) > 3
 
 
+_FOLLOWUP = re.compile(r"^\s*(and|but|what if|what about|und|aber|was wenn|und wenn|that|this|it|das|es)\b|\b(that|this|it|das|es)\b.{0,25}\?\s*$", re.I)
+
+
+def standalone_question(question: str, history: List[Dict[str, Any]]) -> str:
+    """Rewrite a follow-up ("and what if that doesn't help?") into a standalone question using the
+    chat history of this session. History is only used for this call and never stored."""
+    users = [h["text"] for h in history if h.get("role") == "user"]
+    if not users:
+        return question
+    convo = "\n".join("%s: %s" % (h.get("role"), h.get("text", "")[:400]) for h in history[-6:])
+    out = _call_json(
+        "Rewrite the user's last message into ONE standalone question that makes sense without the "
+        "conversation. Replace every reference (it, that, this, the machine, es, das) with what it refers to "
+        "in the earlier user questions, and keep the problem/machine named. Example: after 'The packaging "
+        "machine jams, what do I do?', the message 'and what if that doesn't help?' becomes 'The packaging "
+        "machine still jams after trying the fix, what else can I do?'. Keep the user's language. If the "
+        "message is a new, unrelated topic (e.g. a greeting), return it unchanged.",
+        "Conversation:\n%s\n\nLast message: %s" % (convo, question),
+        {"type": "object", "additionalProperties": False, "required": ["question"],
+         "properties": {"question": {"type": "string"}}}, "standalone")
+    if out and out.get("question", "").strip():
+        q = out["question"].strip()
+        # safety net: still only "that/it" and no topic from before -> attach the previous question
+        if _FOLLOWUP.search(q) and not set(re.findall(r"\w{4,}", users[-1].lower())) & set(re.findall(r"\w{4,}", q.lower())) - {"what", "does", "help", "that", "this"}:
+            return "%s %s" % (users[-1], question)
+        return q
+    if _FOLLOWUP.search(question) or len(question.split()) <= 6:
+        return "%s %s" % (users[-1], question)
+    return question
+
+
 def general_answer(question: str, person: Optional[str]) -> str:
     """Friendly, short general chat answer. Never machine repair steps. Not stored anywhere."""
     name = (person or "").strip()

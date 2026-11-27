@@ -280,6 +280,8 @@ const store = {
     };
   }
 
+  const chat = [];   // Ask conversation, this session only
+
   // ------------------------------------------------------------ user picker
   function renderWho() {
     document.getElementById("who").innerHTML = `${avatar(state.user, "sm")}<span>${esc(state.user)}</span>` +
@@ -326,6 +328,7 @@ const store = {
     };
   });
   function setUser(name) {
+    if (name !== state.user) chat.length = 0;   // chats belong to the person using the device right now
     state.user = name;
     store.set("user", name);
     state.balance = null;
@@ -594,6 +597,7 @@ const store = {
     render(`
       <h1>Ask KnowFlow</h1>
       <p class="sub">Ask in your own words, in any language. Answers come from real entries by your colleagues.</p>
+      <div class="thread" id="thread" aria-live="polite"></div>
       <form class="promptbox" id="askForm">
         <textarea id="q" rows="1" placeholder="Ask anything about your machines…" autocomplete="off" enterkeyhint="send" aria-label="Your question"></textarea>
         <div class="pb-row">
@@ -605,7 +609,7 @@ const store = {
       </form>
       <div class="chips" style="margin-top:12px">${["The packaging machine jams, what do I do?", "Press 2 parts are not accurate", "Compressor pressure drops at night"]
         .map((s) => `<button class="chip" type="button" data-s="${esc(s)}">${esc(s)}</button>`).join("")}</div>
-      <div id="answer"></div>`);
+      <p class="small muted chat-note">${ic("lock")}Chats are not used to evaluate anyone. They disappear when you switch person.</p>`);
     const q = document.getElementById("q"), send = document.getElementById("askSend");
     const grow = () => { q.style.height = "auto"; q.style.height = Math.min(q.scrollHeight, 200) + "px"; send.disabled = !q.value.trim(); };
     q.addEventListener("input", grow);
@@ -621,17 +625,28 @@ const store = {
       r.onerror = () => { micB.classList.remove("on"); toast("Microphone not available here"); };
       r.start();
     });
+    // chat thread: kept in memory for this session only (never stored, cleared on person switch)
+    const thread = document.getElementById("thread");
+    const turnHTML = (t) => `<div class="msg me"><span class="bubble">${esc(t.q)}</span></div>
+      <div class="msg bot">${t.r ? answerHTML(t.r) : `<div class="answer"><div class="stack"><div class="skeleton" style="width:70%"></div><div class="skeleton"></div></div></div>`}</div>`;
+    const draw = () => { thread.innerHTML = chat.map(turnHTML).join(""); };
+    draw();
     const go = async (text) => {
       if (!text.trim()) return;
-      q.value = text; grow();
-      const box = document.getElementById("answer");
-      box.innerHTML = `<div class="answer"><div class="stack"><div class="skeleton" style="width:70%"></div><div class="skeleton"></div><div class="skeleton" style="width:85%"></div></div></div>`;
+      const history = chat.filter((t) => t.r).slice(-3).flatMap((t) => [{ role: "user", text: t.q }, { role: "assistant", text: t.r.summary || "" }]);
+      const turn = { q: text.trim(), r: null };
+      chat.push(turn);
+      q.value = ""; grow();
+      draw();
+      thread.lastElementChild.scrollIntoView({ behavior: "smooth", block: "start" });
       try {
-        const r = await api("/ask", { method: "POST", json: { question: text, asked_by: state.user } });
-        box.innerHTML = answerHTML(r);
+        turn.r = await api("/ask", { method: "POST", json: { question: turn.q, asked_by: state.user, history } });
       } catch (e) {
-        box.innerHTML = `<div class="answer none">${esc(e.message)}</div>`;
+        turn.r = { answered: false, error: e.message };
       }
+      draw();
+      const last = thread.querySelectorAll(".msg.me");
+      if (last.length) last[last.length - 1].scrollIntoView({ behavior: "smooth", block: "start" });
     };
     document.getElementById("askForm").addEventListener("submit", (e) => { e.preventDefault(); go(q.value); });
     view.querySelectorAll("[data-s]").forEach((c) => c.addEventListener("click", () => go(c.dataset.s)));
@@ -639,6 +654,7 @@ const store = {
   }
 
   function answerHTML(r) {
+    if (r.error) return `<div class="answer none">${esc(r.error)}</div>`;
     if (r.general) {
       return `<div class="answer general"><div class="eyebrow">${ic("message-square")}General AI answer · not checked by your experts</div>
         <p class="answer-summary">${esc(r.summary)}</p></div>`;

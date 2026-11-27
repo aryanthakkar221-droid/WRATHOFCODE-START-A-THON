@@ -356,10 +356,16 @@ def card_feedback(card_id: int, body: Feedback) -> Dict[str, Any]:
 
 # ------------------------------------------------------------------ ask
 
+class ChatTurn(BaseModel):
+    role: str            # "user" | "assistant"
+    text: str
+
+
 class Ask(BaseModel):
     question: str
     machine: Optional[str] = None
     asked_by: Optional[str] = None
+    history: List[ChatTurn] = []   # this browser session only; never stored or analysed
 
 
 @app.post("/ask", tags=["ask"])
@@ -368,10 +374,13 @@ def ask(body: Ask) -> Dict[str, Any]:
     approved cards and names who solved it and when. Unanswered questions go to the
     experts (closed loop)."""
     mid = db.slugify(body.machine) if body.machine else None
+    asked = body.question
+    if body.history:  # "and what if that doesn't help?" -> a standalone question
+        body.question = ai.standalone_question(asked, [t.dict() for t in body.history[-6:]])
     if not ai.is_work_question(body.question):
         # small talk / general question: labelled general answer, no card search, never to the experts,
         # nothing stored
-        return {"answered": False, "general": True, "question": body.question, "steps": [], "sources": [],
+        return {"answered": False, "general": True, "question": body.question, "asked": asked, "steps": [], "sources": [],
                 "summary": ai.general_answer(body.question, body.asked_by), "warning": None}
     with db.conn() as c:
         cards = db.list_cards(c, mid, "approved")
@@ -392,6 +401,7 @@ def ask(body: Ask) -> Dict[str, Any]:
             )
             result["open_question_id"] = cur.lastrowid
     result["question"] = body.question
+    result["asked"] = asked
     return result
 
 
