@@ -3,9 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#3f7d20">
+  <meta name="theme-color" content="#F6F3FB">
   <title>KnowFlow</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='14' fill='%233f7d20'/><path d='M18 44V20h6v9l10-9h8L31 30l12 14h-8l-9-10-2 2v8z' fill='white'/></svg>">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='14' fill='%237B3FE4'/><path d='M18 44V20h6v9l10-9h8L31 30l12 14h-8l-9-10-2 2v8z' fill='white'/></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -20,16 +23,17 @@
   <main id="view" tabindex="-1"></main>
 
   <nav class="tabs" id="tabs" aria-label="Main">
-    <a href="#/record" data-tab="record"><span class="ti">🎙️</span>Record</a>
-    <a href="#/ask" data-tab="ask"><span class="ti">🔎</span>Ask</a>
-    <a href="#/meetings" data-tab="meetings"><span class="ti">👥</span>Meetings</a>
-    <a href="#/dashboard" data-tab="dashboard"><span class="ti">📊</span>Dashboard</a>
-    <a href="#/wallet" data-tab="wallet"><span class="ti">🪙</span>Wallet</a>
+    <a href="#/record" data-tab="record"><span class="ti" data-icon="mic"></span>Record</a>
+    <a href="#/ask" data-tab="ask"><span class="ti" data-icon="search"></span>Ask</a>
+    <a href="#/meetings" data-tab="meetings"><span class="ti" data-icon="users"></span>Meetings</a>
+    <a href="#/dashboard" data-tab="dashboard"><span class="ti" data-icon="layout-dashboard"></span>Dashboard</a>
+    <a href="#/wallet" data-tab="wallet"><span class="ti" data-icon="wallet"></span>Wallet</a>
   </nav>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <dialog id="modal"></dialog>
 
+  <script src="icons.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

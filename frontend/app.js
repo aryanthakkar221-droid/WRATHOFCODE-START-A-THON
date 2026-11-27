@@ -63,6 +63,13 @@ const store = {
   const modal = document.getElementById("modal");
 
   // ------------------------------------------------------------ helpers
+  // Lucide icons, inlined from icons.js (works offline). ic("mic"), ic("check", "lg")
+  const ICONS = window.KF_ICONS || {};
+  function ic(name, cls = "") {
+    return `<svg class="i ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ICONS.plus || ""}</svg>`;
+  }
+  const MACHINE_ICONS = { "packaging-machine": "package", "machine-1": "cog", "press-2": "hammer", compressor: "wind" };
+  function machineIcon(id, cls = "") { return ic(MACHINE_ICONS[id] || "factory", cls); }
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   }
@@ -77,7 +84,7 @@ const store = {
     return AVATAR_COLORS[h % AVATAR_COLORS.length];
   }
   function avatar(name, cls = "") {
-    return `<span class="avatar ${cls}" style="background:${avatarColor(name)}" aria-hidden="true">${esc(initials(name))}</span>`;
+    return `<span class="avatar ${cls}" aria-hidden="true">${esc(initials(name))}</span>`;
   }
   function fmtDate(iso, withYear) {
     if (!iso) return "";
@@ -94,8 +101,8 @@ const store = {
     if (days < 30) return days + " days ago";
     return fmtDate(iso);
   }
-  function toast(msg) {
-    toastEl.textContent = msg;
+  function toast(msg, icon) {
+    toastEl.innerHTML = (icon ? ic(icon) : "") + `<span>${esc(msg)}</span>`;
     toastEl.classList.add("show");
     clearTimeout(toast.t);
     toast.t = setTimeout(() => toastEl.classList.remove("show"), 2600);
@@ -142,7 +149,7 @@ const store = {
       ["Watch out", c.warning, "warning"],
     ].filter((r) => r[1] && !(opts.titleFromProblem && r[2] === "problem"));
     const status = c.status === "approved"
-      ? `<span class="badge ok">✓ Approved by ${esc(c.approved_by || c.author)}</span>`
+      ? `<span class="badge ok">${ic("badge-check")}Approved by ${esc(c.approved_by || c.author)}</span>`
       : `<span class="badge draft">Draft · waiting for approval</span>`;
     const conf = Math.round((c.confidence || 0.5) * 100);
     const votes = c.worked_count + c.failed_count;
@@ -150,11 +157,11 @@ const store = {
     <article class="kcard ${c.outdated ? "outdated" : ""}" data-card="${c.id}">
       <div class="kcard-head">
         <div class="badges">
-          ${c.machine ? `<a class="badge machine" href="#/m/${esc(c.machine_id)}">⚙️ ${esc(c.machine)}</a>` : ""}
+          ${c.machine ? `<a class="badge machine" href="#/m/${esc(c.machine_id)}">${machineIcon(c.machine_id)}${esc(c.machine)}</a>` : ""}
           ${kindCls || c.kind !== "fix" ? `<span class="badge ${kindCls}">${kindLabel}</span>` : ""}
           ${c.source === "meeting" ? `<span class="badge meeting">From meeting</span>` : ""}
-          ${c.shared_by ? `<span class="badge machine">💬 Tip from ${esc(c.author)}, shared by ${esc(c.shared_by)}</span>` : ""}
-          ${c.failed_count > c.worked_count ? `<span class="badge bad">⚠ Often didn't work</span>` : c.outdated ? `<span class="badge bad">⚠ Outdated</span>` : ""}
+          ${c.shared_by ? `<span class="badge shared">${ic("message-square")}Tip from ${esc(c.author)}, shared by ${esc(c.shared_by)}</span>` : ""}
+          ${c.failed_count > c.worked_count ? `<span class="badge bad">${ic("alert-triangle")}Often didn't work</span>` : c.outdated ? `<span class="badge bad">${ic("alert-triangle")}Outdated</span>` : ""}
         </div>
         <div class="badges">${status}</div>
       </div>
@@ -162,30 +169,30 @@ const store = {
       <dl>
         ${rows.map((r) => `<div class="field-row ${r[2]}"><dt>${r[0]}</dt><dd>${esc(r[1])}</dd></div>`).join("")}
       </dl>
-      ${opts.showTranscript && c.transcript ? `<div class="transcript">“${esc(c.transcript)}”</div>` : ""}
+      ${opts.showTranscript && c.transcript ? `<div class="transcript"><div class="eyebrow">Transcript</div>“${esc(c.transcript)}”</div>` : ""}
       <div class="author">
         ${avatar(c.author)}
         <div class="author-meta grow">
           <b>${esc(c.author)}</b>${retiredBadge(c.author)}
           <small>${c.author_years_experience ? c.author_years_experience + " years experience · " : ""}${fmtDate(c.date)}${c.last_confirmed ? " · last confirmed " + ago(c.last_confirmed) : ""}</small>
         </div>
-        ${c.status === "approved" ? `<div class="small muted" title="Share of people who said it worked">
-          ${c.worked_count ? `Worked for ${c.worked_count} ${c.worked_count === 1 ? "person" : "people"}` : votes ? "Not confirmed yet" : "No votes yet"}
-          ${c.failed_count ? `<br><span style="color:var(--danger)">Didn't work for ${c.failed_count}</span>` : ""}
+        ${c.status === "approved" ? `<div class="worked" title="Worked for ${c.worked_count} ${c.worked_count === 1 ? "person" : "people"}">
+          <span class="big">${c.worked_count}</span><span class="lbl">${c.worked_count ? `Worked for ${c.worked_count === 1 ? "1 person" : c.worked_count + " people"}` : votes ? "Not confirmed yet" : "No votes yet"}</span>
+          ${c.failed_count ? `<span class="fail">Didn't work for ${c.failed_count}</span>` : ""}
           <div class="confidence"><i style="width:${conf}%"></i></div></div>` : ""}
       </div>
       ${opts.feedback && c.status === "approved" ? `
       <div class="feedback">
         <span class="label">Did this work?</span>
-        <button class="btn small" data-fb="1" data-id="${c.id}">👍 Worked</button>
-        <button class="btn small" data-fb="0" data-id="${c.id}">👎 Didn't work</button>
+        <button class="btn small" data-fb="1" data-id="${c.id}">${ic("check")}Worked</button>
+        <button class="btn small" data-fb="0" data-id="${c.id}">${ic("x")}Didn't work</button>
       </div>` : ""}
       ${opts.approve && c.status !== "approved" ? `
       <div class="card-actions">
         ${c.shared_by && c.author !== state.user
-          ? `<span class="badge draft" style="flex-basis:100%;text-align:center;padding:10px">⏳ Waiting for ${esc(c.author)} to approve</span>`
-          : `<button class="btn primary" data-approve="${c.id}">✓ Approve</button>`}
-        <button class="btn" data-edit="${c.id}">✎ Edit</button>
+          ? `<span class="waiting">${ic("hourglass")}Waiting for ${esc(c.author)} to approve</span>`
+          : `<button class="btn primary" data-approve="${c.id}">${ic("check")}Approve</button>`}
+        <button class="btn" data-edit="${c.id}">${ic("pencil")}Edit</button>
         <button class="btn danger" data-reject="${c.id}">Discard</button>
       </div>` : ""}
     </article>`;
@@ -200,9 +207,9 @@ const store = {
       try {
         const c = await api(`/cards/${id}/feedback`, { method: "POST", json: { worked: fb.dataset.fb === "1", voter: state.user } });
         replaceCard(c, { feedback: false, titleFromProblem: !!fb.closest("[data-title]") });
-        if (c.already_voted) toast("You already rated this tip.");
+        if (c.already_voted) toast("You already rated this tip");
         else if (c.tokens) rewardToast(c.tokens);
-        else toast(fb.dataset.fb === "1" ? "Thanks! Marked as proven fix." : "Thanks. The expert will see it didn't work.");
+        else toast(fb.dataset.fb === "1" ? "Marked as a fix that worked" : "Noted. The expert will see it didn't work", fb.dataset.fb === "1" ? "check" : "x");
       } catch (err) { toast(err.message); }
       return;
     }
@@ -212,8 +219,8 @@ const store = {
       try {
         const c = await api(`/cards/${ap.dataset.approve}/approve`, { method: "POST", json: { expert: state.user } });
         replaceCard(c, { showTranscript: false });
-        if (c.tokens) rewardToast(c.tokens, "Approved. It's live, and the recording is deleted.");
-        else toast("Approved. It's live, and the recording is deleted.");
+        if (c.tokens) rewardToast(c.tokens, "Card approved. The recording is deleted");
+        else toast("Card approved. The recording is deleted", "badge-check");
         refreshMachines();
       } catch (err) { toast(err.message); ap.disabled = false; }
       return;
@@ -225,7 +232,7 @@ const store = {
         await api(`/cards/${rj.dataset.reject}`, { method: "DELETE" });
         const el = view.querySelector(`[data-card="${rj.dataset.reject}"]`);
         if (el) el.remove();
-        toast("Draft discarded.");
+        toast("Draft discarded");
       } catch (err) { toast(err.message); }
       return;
     }
@@ -268,7 +275,7 @@ const store = {
       try {
         const upd = await api(`/cards/${id}`, { method: "PATCH", json: body });
         replaceCard(upd, { approve: true, showTranscript: true });
-        toast("Saved.");
+        toast("Saved", "check");
       } catch (err) { toast(err.message); }
     };
   }
@@ -276,18 +283,17 @@ const store = {
   // ------------------------------------------------------------ user picker
   function renderWho() {
     document.getElementById("who").innerHTML = `${avatar(state.user, "sm")}<span>${esc(state.user)}</span>` +
-      (state.balance != null ? `<span class="who-bal" id="whoBal" title="Your tokens">🪙 ${state.balance}</span>` : "");
+      (state.balance != null ? `<span class="who-bal" id="whoBal" title="Your tokens">${ic("coins")}${state.balance}</span>` : "");
   }
   async function refreshBalance() {
     try { state.balance = (await api("/wallet/" + encodeURIComponent(state.user))).balance; } catch (e) { state.balance = null; }
     renderWho();
   }
-  // "+10 🪙 Herr Müller: your fix worked for Ahmed" slides in from the top.
+  // "+10 tokens · Herr Müller · Your fix worked for Ahmed" slides in from the top.
   function rewardToast(t, extra) {
-    const who = t.person === state.user ? "" : `${t.person}: `;
-    const reason = who ? t.reason.replace(/^Your/, "your") : t.reason;
+    const who = t.person === state.user ? "" : `${t.person} · `;
     toastEl.classList.add("reward");
-    toast(`+${t.amount} 🪙 ${who}${reason}${extra ? " · " + extra : ""}`);
+    toast(`${extra ? extra + " · " : ""}+${t.amount} tokens · ${who}${t.reason}`, "coins");
     setTimeout(() => toastEl.classList.remove("reward"), 2800);
     refreshBalance();
     const b = document.getElementById("whoBal");
@@ -367,7 +373,7 @@ const store = {
     };
   }
   const mmss = (s) => String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
-  const MIC_SVG = `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/></svg>`;
+  const MIC_SVG = ic("mic");
   const STOP_SVG = `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>`;
 
   // ------------------------------------------------------------ screen: record
@@ -391,10 +397,10 @@ const store = {
         <button class="mic" id="mic" type="button" aria-label="Start recording">${MIC_SVG}</button>
         <div class="rec-status" id="recStatus"><span class="muted">Tap to start</span></div>
         <div class="row" style="margin-top:14px;justify-content:center">
-          <button class="btn" id="nextQ" type="button" hidden>Next question →</button>
-          <button class="btn primary" id="done" type="button" hidden>✓ Done</button>
+          <button class="btn" id="nextQ" type="button" hidden>Next question${ic("arrow-right")}</button>
+          <button class="btn primary" id="done" type="button" hidden>${ic("check")}Done</button>
         </div>
-        <button class="btn ghost" id="typeInstead" type="button" style="margin-top:6px">⌨️ Type instead</button>
+        <button class="btn ghost" id="typeInstead" type="button" style="margin-top:6px">${ic("keyboard")}Type instead</button>
       </div>
       <div id="typeBox" hidden class="stack">
         <textarea id="noteText" placeholder="What was difficult today? What did you solve, and how? What should the next person watch out for?"></textarea>
@@ -408,8 +414,8 @@ const store = {
       if (!qsList.length) return;
       const q = qsList[0];
       document.getElementById("loop").innerHTML = `
-        <div class="loop-note" style="margin-bottom:14px">❓ <b>A colleague asked:</b> “${esc(q.question)}”<br>
-        <span class="small">If you know the answer, tell it in today's log.</span></div>`;
+        <div class="loop-note" style="margin-bottom:14px">${ic("circle-help")}<span><b>A colleague asked:</b> “${esc(q.question)}”<br>
+        <span class="small muted">If you know the answer, include it in today's log.</span></span></div>`;
     }).catch(() => {});
 
     const $ = (id) => document.getElementById(id);
@@ -452,7 +458,7 @@ const store = {
       activeRecorder = null;
       const { blob, ext, seconds } = await r.stop();
       if (seconds < 2) {
-        toast("That was very short. Try again and talk a bit longer.");
+        toast("That was very short. Try again and talk a little longer");
         return screenRecord();
       }
       const form = new FormData();
@@ -473,7 +479,7 @@ const store = {
     $("typeInstead").addEventListener("click", showType);
     $("sendText").addEventListener("click", () => {
       const t = $("noteText").value.trim();
-      if (t.length < 10) return toast("Write a little more first.");
+      if (t.length < 10) return toast("Write a little more first");
       const form = new FormData();
       form.append("author", state.user);
       form.append("text", t);
@@ -491,18 +497,18 @@ const store = {
       try {
         const res = await api("/entries", { method: "POST", form });
         $("result").innerHTML = `
-          <h2>${res.tip_from ? "Thanks for passing it on!" : "Your card is ready"}</h2>
+          <h2>${res.tip_from ? "Tip passed on" : "Your card is ready"}</h2>
           <p class="sub">${res.tip_from
             ? `This tip is from ${esc(res.tip_from)}. It stays a draft until ${esc(res.tip_from)} approves it.`
             : "Check it, then approve it so the team can use it."}</p>
-          ${res.open_question_id ? `<div class="loop-note" style="margin-bottom:12px">❓ <b>Nobody could help?</b> We added your question for the experts. They'll see it in their next shift log.</div>` : ""}
+          ${res.open_question_id ? `<div class="loop-note" style="margin-bottom:12px">${ic("circle-help")}<span><b>Sent to the experts.</b> Nobody could help today, so your question is now on the experts' list. They will see it in their next shift log.</span></div>` : ""}
           ${detectedHTML(res)}
           <div id="resultCard">${cardHTML(res.card, { approve: true, showTranscript: true })}</div>
-          <button class="btn ghost block" id="again" style="margin-top:12px">🎙️ Log another</button>`;
+          <button class="btn ghost block" id="again" style="margin-top:12px">${ic("mic")}Log another</button>`;
         $("again").addEventListener("click", screenRecord);
         wireDetected(res);
       } catch (e) {
-        $("result").innerHTML = `<div class="empty"><span class="ei">😕</span>${esc(e.message)}</div>
+        $("result").innerHTML = `<div class="empty"><span class="ei">${ic("mic-off")}</span>${esc(e.message)}</div>
           <button class="btn block" id="retry" style="margin-top:12px">Try again</button>`;
         $("retry").addEventListener("click", screenRecord);
       }
@@ -516,12 +522,13 @@ const store = {
     const opts = (res.machines || []).map((m) => `<option ${m === c.machine ? "selected" : ""}>${esc(m)}</option>`).join("");
     return `
       <div class="detected" id="detected">
-        <span class="det-text">📦 Detected: <b id="detName">${esc(c.machine || "No machine yet")}</b>
+        <span class="det-ico">${machineIcon(c.machine_id, "lg")}</span>
+        <span class="det-text">Detected: <b id="detName">${esc(c.machine || "No machine yet")}</b>
           ${how ? `<small class="muted">${how}</small>` : ""}</span>
-        <button class="btn small" id="detChange" type="button">✎ Change</button>
+        <button class="btn small" id="detChange" type="button">${ic("pencil")}Change</button>
         <div class="det-pick" id="detPick" hidden>
           <select id="detSelect" aria-label="Machine">${c.machine ? "" : "<option value=\"\">Pick a machine</option>"}${opts}</select>
-          <button class="btn small primary" id="detSave" type="button">✓ Save</button>
+          <button class="btn small primary" id="detSave" type="button">${ic("check")}Save</button>
         </div>
       </div>`;
   }
@@ -530,14 +537,15 @@ const store = {
     $("detChange").addEventListener("click", () => { $("detPick").hidden = false; $("detChange").hidden = true; $("detSelect").focus(); });
     $("detSave").addEventListener("click", async () => {
       const m = $("detSelect").value;
-      if (!m) return toast("Pick a machine first.");
+      if (!m) return toast("Pick a machine first");
       try {
         const card = await api("/cards/" + res.card.id, { method: "PATCH", json: { machine: m } });
         res.card = card;
         $("detName").textContent = card.machine;
+        document.querySelector("#detected .det-ico").innerHTML = machineIcon(card.machine_id, "lg");
         $("detPick").hidden = true; $("detChange").hidden = false;
         $("resultCard").innerHTML = cardHTML(card, { approve: true, showTranscript: true });
-        toast("Machine changed to " + card.machine);
+        toast("Saved to " + card.machine, "check");
         refreshMachines();
       } catch (e) { toast(e.message); }
     });
@@ -557,9 +565,9 @@ const store = {
       <p class="sub">Ask in your own words, in any language. Answers come from real entries by your colleagues.</p>
       <form class="searchbar" id="askForm">
         <input type="search" id="q" placeholder="e.g. packaging line jams, what do I do?" autocomplete="off" enterkeyhint="search">
-        <button class="btn primary" aria-label="Ask">Ask</button>
+        <button class="btn primary" aria-label="Ask">${ic("search")}Ask</button>
       </form>
-      <a class="btn block" href="#/challenge" style="margin-top:12px">🎮 New here? Play the Fix-it Challenge</a>
+      <a class="btn block" href="#/challenge" style="margin-top:12px">${ic("gamepad")}New here? Try the Fix-it Challenge</a>
       <div class="chips" style="margin-top:12px">${SUGGESTIONS.map((s) => `<button class="chip" type="button" data-s="${esc(s)}">${esc(s)}</button>`).join("")}</div>
       <div id="answer"></div>`);
     const q = document.getElementById("q");
@@ -583,20 +591,22 @@ const store = {
   function answerHTML(r) {
     if (!r.answered) {
       return `<div class="answer none">
-        <p class="answer-summary">🤔 ${esc(r.summary)}</p>
+        <div class="eyebrow">${ic("file-question")}No approved card found</div>
+        <p class="answer-summary">${esc(r.summary)}</p>
         ${r.suggest_ask ? `<p>Best person to ask: <b>${esc(r.suggest_ask)}</b></p>` : ""}
         <p class="small muted">We sent your question to the experts. It becomes their next question in the shift log.</p>
       </div>`;
     }
     return `<div class="answer">
+      <div class="eyebrow">${ic("badge-check")}From approved cards</div>
       <p class="answer-summary">${esc(r.summary)}</p>
       <ol class="steps">${r.steps.map((s) => `
         <li>${esc(s.text)}<br>
           <span class="source">${avatar(s.source.author, "sm")} from ${esc(s.source.author)}, ${fmtDate(s.source.date)}${s.source.years_experience ? " · " + s.source.years_experience + " yrs" : ""}</span>
         </li>`).join("")}</ol>
-      ${r.warning ? `<div class="warnbox">⚠️ ${esc(r.warning)}</div>` : ""}
+      ${r.warning ? `<div class="warnbox">${ic("alert-triangle")}<span>${esc(r.warning)}</span></div>` : ""}
     </div>
-    <h2>Source cards</h2>
+    <div class="section-label">Source cards</div>
     <div class="stack" data-title>${r.sources.map((c) => cardHTML(c, { feedback: true, titleFromProblem: true })).join("")}</div>`;
   }
 
@@ -627,8 +637,8 @@ const store = {
             <small class="muted" style="font-weight:400">Required by law in Germany. Audio is never stored, only the extracted knowledge.</small></span></label>
         </div>
         <div class="row">
-          <button class="btn primary grow" id="mrec" disabled>🔴 Record</button>
-          <button class="btn grow" id="mtype" disabled>⌨️ Paste notes</button>
+          <button class="btn primary grow" id="mrec" disabled>${ic("mic")}Record</button>
+          <button class="btn grow" id="mtype" disabled>${ic("keyboard")}Paste notes</button>
         </div>
       </div>`;
     const consent = document.getElementById("consent");
@@ -648,18 +658,18 @@ const store = {
   }
 
   async function meetingRecord() {
-    if (!canRecord()) { toast("No microphone here (needs HTTPS). Paste notes instead."); return meetingType(); }
+    if (!canRecord()) { toast("No microphone here (needs HTTPS). Paste notes instead"); return meetingType(); }
     const meta = meetingMeta();
     const box = document.getElementById("meet");
     let rec;
     try {
       rec = await startRecorder((s) => { const t = document.getElementById("mtime"); if (t) t.textContent = mmss(s); });
-    } catch (e) { return toast("Microphone blocked."); }
+    } catch (e) { return toast("Microphone blocked"); }
     activeRecorder = rec;
     box.innerHTML = `
       <div class="rec-bar"><span class="dot"></span> Recording · <span id="mtime">00:00</span> <span class="grow"></span>${esc(meta.title)}</div>
-      <p class="sub center">Everyone can see this red indicator while recording.</p>
-      <button class="btn primary block" id="mstop">■ Stop and extract knowledge</button>
+      <p class="sub center" style="margin-top:12px">Everyone can see this red indicator while recording.</p>
+      <button class="btn primary block" id="mstop">${ic("square")}Stop and extract knowledge</button>
       <button class="btn ghost block" id="mcancel">Cancel</button>`;
     document.getElementById("mcancel").addEventListener("click", () => { rec.cancel(); activeRecorder = null; meetingSetup(); });
     document.getElementById("mstop").addEventListener("click", async () => {
@@ -685,7 +695,7 @@ const store = {
     document.getElementById("mback").addEventListener("click", meetingSetup);
     document.getElementById("msend").addEventListener("click", () => {
       const t = document.getElementById("mtext").value.trim();
-      if (t.length < 20) return toast("Paste a bit more text first.");
+      if (t.length < 20) return toast("Paste a bit more text first");
       const form = new FormData();
       form.append("title", meta.title);
       form.append("participants", meta.people);
@@ -701,35 +711,35 @@ const store = {
     try {
       const r = await api("/meetings", { method: "POST", form });
       box.innerHTML = meetingResultHTML(r) + `
-        ${r.cards.length ? `<button class="btn primary block" id="addAll">✓ Add ${r.cards.length} cards to knowledge base</button>` : ""}
+        ${r.cards.length ? `<button class="btn primary block" id="addAll">${ic("check")}Add ${r.cards.length} cards to knowledge base</button>` : ""}
         <button class="btn ghost block" id="newMeet">New meeting</button>`;
       const addAll = document.getElementById("addAll");
       if (addAll) addAll.addEventListener("click", async () => {
         addAll.disabled = true;
         try {
           for (const c of r.cards) await api(`/cards/${c.id}/approve`, { method: "POST", json: { expert: state.user } });
-          addAll.textContent = "✓ Added to knowledge base";
-          toast("Meeting knowledge is now searchable.");
+          addAll.innerHTML = ic("check") + "Added to knowledge base";
+          toast("Meeting knowledge is now searchable", "check");
           refreshMachines();
         } catch (e) { toast(e.message); addAll.disabled = false; }
       });
       document.getElementById("newMeet").addEventListener("click", meetingSetup);
       loadPastMeetings();
     } catch (e) {
-      box.innerHTML = `<div class="empty"><span class="ei">😕</span>${esc(e.message)}</div>`;
+      box.innerHTML = `<div class="empty"><span class="ei">${ic("mic-off")}</span>${esc(e.message)}</div>`;
       setTimeout(meetingSetup, 3000);
     }
   }
 
   function meetingResultHTML(r) {
     const sec = (icon, title, items, fmt) => items && items.length ? `
-      <div class="result-sec"><h3>${icon} ${title}</h3><ul>${items.map((x) => `<li>${fmt(x)}</li>`).join("")}</ul></div>` : "";
+      <div class="result-sec"><h3>${ic(icon)} ${title}</h3><ul>${items.map((x) => `<li>${fmt(x)}</li>`).join("")}</ul></div>` : "";
     return `<div class="stack">
       ${r.summary ? `<p class="answer-summary">${esc(r.summary)}</p>` : ""}
-      ${sec("✅", "Decisions", r.decisions, (d) => `<b>${esc(d.decision)}</b>${d.reason ? `<br><span class="muted">Why: ${esc(d.reason)}</span>` : ""}`)}
-      ${sec("🔧", "Problems and solutions", r.problems, (p) => `<b>${esc(p.problem)}</b>${p.solution ? `<br>→ ${esc(p.solution)}` : ""}${p.machine ? ` <span class="badge machine">${esc(p.machine)}</span>` : ""}`)}
-      ${sec("💡", "Lessons learned", r.lessons_learned, (l) => esc(l))}
-      ${sec("📌", "Action items", r.action_items, (a) => `${esc(a.task)}${a.owner ? ` · <b>${esc(a.owner)}</b>` : ""}${a.due ? ` · due ${esc(a.due)}` : ""}`)}
+      ${sec("circle-check", "Decisions", r.decisions, (d) => `<b>${esc(d.decision)}</b>${d.reason ? `<br><span class="muted">Why: ${esc(d.reason)}</span>` : ""}`)}
+      ${sec("wrench", "Problems and solutions", r.problems, (p) => `<b>${esc(p.problem)}</b>${p.solution ? `<br><span class="muted">Fix:</span> ${esc(p.solution)}` : ""}${p.machine ? ` <span class="badge machine">${esc(p.machine)}</span>` : ""}`)}
+      ${sec("lightbulb", "Lessons learned", r.lessons_learned, (l) => esc(l))}
+      ${sec("list-checks", "Action items", r.action_items, (a) => `${esc(a.task)}${a.owner ? ` · <b>${esc(a.owner)}</b>` : ""}${a.due ? ` · due ${esc(a.due)}` : ""}`)}
     </div>`;
   }
 
@@ -741,94 +751,139 @@ const store = {
       el.innerHTML = list.length ? list.map((m) => `
         <details class="result-sec"><summary><b>${esc(m.title)}</b> <span class="muted small">· ${fmtDate(m.date)} · ${esc(m.participants.join(", "))}</span></summary>
           <div style="margin-top:10px">${meetingResultHTML(m)}</div></details>`).join("")
-        : `<div class="empty"><span class="ei">👥</span>No meetings yet. Record your next team meeting to keep what was decided and why.</div>`;
+        : `<div class="empty"><span class="ei">${ic("users")}</span>No meetings yet. Record your next team meeting to keep what was decided and why.</div>`;
     } catch (e) { el.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
   }
 
   // ------------------------------------------------------------ screen: dashboard
+  const ALERT_META = {
+    recurring_problem: { icon: "repeat", title: "Keeps happening", tag: ["Recurring", "recurring"] },
+    knowledge_risk: { icon: "user-round", title: "Only one person knows", tag: ["High risk", "high"] },
+    disputed_fix: { icon: "thumbs-down", title: "Fix often fails", tag: ["Check fix", "warn"] },
+  };
+  function alertRow(a, withTitle = true) {
+    const m = ALERT_META[a.type] || { icon: "alert-triangle", title: "Alert", tag: ["Alert", "warn"] };
+    const tag = a.type === "knowledge_risk" && a.severity !== "high" ? ["Watch", "warn"] : m.tag;
+    const n = a.count || (a.card_ids || []).length || 1;
+    return `
+      <a class="alert ${a.severity}" href="${a.machine_id ? "#/m/" + esc(a.machine_id) : "#/dashboard"}">
+        <span class="ai">${ic(m.icon)}</span>
+        <span class="alert-body">${withTitle ? `<b>${m.title}</b>` : ""}<span class="alert-msg">${esc(a.message)}</span><br>
+          <span class="tag ${tag[1]}">${tag[0]}</span></span>
+        <span class="count" title="${n} cards">${n}</span>
+      </a>`;
+  }
+
   async function screenDashboard() {
-    render(`<h1>Dashboard</h1><p class="sub">Where knowledge is at risk, and what keeps coming back.</p><div class="stack"><div class="skeleton"></div><div class="skeleton"></div></div>`);
+    render(`<h1>Dashboard</h1><p class="sub">Where knowledge is at risk, and what keeps coming back.</p>
+      <div class="kpis">${'<div class="kpi"><div class="skeleton" style="height:40px;width:50%"></div><div class="skeleton" style="margin-top:12px"></div></div>'.repeat(4)}</div>`);
     try {
-      const [stats, alerts, risk, drafts, openQ] = await Promise.all([
+      const [stats, alerts, risk, drafts, openQ, approved] = await Promise.all([
         api("/stats"), api("/alerts"), api("/risk-map"), api("/entries?status=draft"), api("/open-questions"),
+        api("/entries?status=approved"),
       ]);
-      const icon = { recurring_problem: "🔁", knowledge_risk: "👤", disputed_fix: "👎" };
-      const title = { recurring_problem: "Keeps happening", knowledge_risk: "Only one person knows", disputed_fix: "Fix often fails" };
+      const weekAgo = Date.now() - 7 * 864e5;
+      const newThisWeek = approved.filter((c) => new Date(c.approved_at || c.date) >= weekAgo).length;
+      const atRisk = risk.filter((r) => r.risk === "high");
+      const group = (t) => alerts.filter((a) => a.type === t);
+      const list = (items, empty) => items.length
+        ? `<div class="list">${items.map((a) => alertRow(a, false)).join("")}</div>`
+        : `<div class="empty"><span class="ei">${ic("circle-check")}</span>${empty}</div>`;
+
+      // who knows which machine: approved cards per person per machine
+      const people = [...new Set(approved.map((c) => c.author))].sort((a, b) =>
+        approved.filter((c) => c.author === b).length - approved.filter((c) => c.author === a).length);
+      const cnt = (mid, p) => approved.filter((c) => c.machine_id === mid && c.author === p).length;
+      const shade = (n) => "s" + Math.min(n, 4);
+      const lvl = { high: ["At risk", "high"], medium: ["Watch", "warn"], low: ["Safe", "recurring"] };
+
       render(`
         <h1>Dashboard</h1>
         <p class="sub">Where knowledge is at risk, and what keeps coming back.</p>
-        <div class="stats">
-          <div class="stat"><b>${stats.cards_approved}</b><span>knowledge cards</span></div>
-          <div class="stat"><b>${stats.experts}</b><span>experts sharing</span></div>
-          <div class="stat"><b>${stats.confirmed_fixes}</b><span>times a tip helped</span></div>
-          <div class="stat"><b>${stats.open_questions}</b><span>questions without answer</span></div>
+
+        <div class="section-label" style="margin-top:8px">Overview</div>
+        <div class="kpis stats">
+          <div class="kpi"><span class="num">${stats.cards_approved}</span><span class="lbl">Approved cards</span><span class="trend">+${newThisWeek} this week</span></div>
+          <div class="kpi"><span class="num">${stats.open_questions}</span><span class="lbl">Open questions</span><span class="trend">waiting for an expert</span></div>
+          <div class="kpi"><span class="num">${stats.confirmed_fixes}</span><span class="lbl">Fixes that worked</span><span class="trend">across ${approved.filter((c) => c.worked_count).length} cards</span></div>
+          <div class="kpi risk-kpi"><span class="num">${atRisk.length}</span><span class="lbl">Knowledge at risk</span><span class="trend">of ${risk.length} machines</span></div>
         </div>
 
-        <h2>Alerts</h2>
-        <div class="stack">${alerts.length ? alerts.map((a) => `
-          <a class="alert ${a.severity}" href="${a.machine_id ? "#/m/" + esc(a.machine_id) : "#/dashboard"}">
-            <span class="ai">${icon[a.type] || "⚠️"}</span>
-            <span><b>${title[a.type] || "Alert"}</b>${esc(a.message)}</span>
-          </a>`).join("") : `<div class="empty"><span class="ei">✅</span>No alerts right now.</div>`}</div>
+        <div class="section-label">Risks</div>
+        <h2 style="margin-top:0">Keeps happening</h2>
+        ${list(group("recurring_problem"), "Nothing keeps coming back right now.")}
+        <h2>Only one person knows</h2>
+        ${list(group("knowledge_risk"), "Every machine has more than one expert.")}
+        ${group("disputed_fix").length ? `<h2>Fix often fails</h2>${list(group("disputed_fix"), "")}` : ""}
 
         <h2>Who knows which machine?</h2>
-        <p class="sub small">Red: only people who retire soon know how to fix it.</p>
-        <div class="risk-grid">${risk.map((r) => `
-          <a class="risk ${r.risk}" href="#/m/${esc(r.machine_id)}">
-            <span class="lvl">${{ high: "At risk", medium: "Watch", low: "Safe" }[r.risk]}</span>
-            <b>${esc(r.machine)}</b>
-            <span class="small">${r.people_who_know_it} ${r.people_who_know_it === 1 ? "person knows" : "people know"} it</span>
-            <span class="small muted">${r.experts_retiring_soon.length ? "Retiring: " + esc(r.experts_retiring_soon.join(", ")) : esc(r.experts.join(", "))}</span>
-          </a>`).join("")}</div>
+        <p class="sub small">Approved cards per person. A machine is at risk when only people who are leaving know it.</p>
+        <div class="panel" style="padding:0">
+          <div class="heat-wrap">
+            <div class="risk-grid heat" role="table" aria-label="Approved cards per person and machine">
+              <div class="hrow hhead" role="row"><span class="hcell hname" role="columnheader">Machine</span>${people.map((p) =>
+                `<span class="hcell" role="columnheader"><span class="person">${avatar(p, "sm")}<small>${esc(p.replace(/^(Herr|Frau) /, ""))}</small></span></span>`).join("")}</div>
+              ${risk.map((r) => `
+              <div class="hrow" role="row">
+                <span class="hcell hname" role="rowheader"><a class="risk ${r.risk}" href="#/m/${esc(r.machine_id)}">
+                  <b>${esc(r.machine)}</b><span class="tag ${lvl[r.risk][1]} lvl">${lvl[r.risk][0]}</span></a></span>
+                ${people.map((p) => { const n = cnt(r.machine_id, p); return `<span class="hcell" role="cell"><span class="shade ${shade(n)}" title="${esc(p)}: ${n} cards">${n || "·"}</span></span>`; }).join("")}
+              </div>`).join("")}
+            </div>
+          </div>
+          <div class="legend"><span><i class="s1" style="background:#E9DDFB"></i>1 card</span><span><i style="background:#C9AEF4"></i>2</span><span><i style="background:#9C6BEB"></i>3</span><span><i style="background:#7B3FE4"></i>4+</span></div>
+        </div>
 
-        <h2>Waiting for approval <span class="badge draft">${drafts.length}</span></h2>
+        <div class="section-label">Activity</div>
+        <h2 style="margin-top:0">Waiting for approval <span class="count">${drafts.length}</span></h2>
         <div class="stack">${drafts.length ? drafts.map((c) => cardHTML(c, { approve: true, showTranscript: true, titleFromProblem: true })).join("")
-          : `<div class="empty"><span class="ei">📝</span>No drafts. New shift logs show up here until an expert approves them.</div>`}</div>
+          : `<div class="empty"><span class="ei">${ic("inbox")}</span>No drafts. New shift logs show up here until an expert approves them.</div>`}</div>
 
-        <h2>Questions without an answer yet</h2>
-        <div class="stack">${openQ.length ? openQ.map((q) => `
-          <div class="list-item"><span style="font-size:22px">❓</span><span class="grow">${esc(q.question)}<br>
-            <small class="muted">${q.asked_by ? esc(q.asked_by) + " · " : ""}${ago(q.date)}</small></span></div>`).join("")
-          : `<div class="empty"><span class="ei">🙌</span>Every question has an answer.</div>`}</div>
+        <h2>Questions without an answer <span class="count">${openQ.length}</span></h2>
+        ${openQ.length ? `<div class="list">${openQ.map((q) => `
+          <div class="list-item"><span class="li-ico">${ic("circle-help")}</span><span class="grow">${esc(q.question)}<br>
+            <small class="muted">${q.asked_by ? esc(q.asked_by) + " · " : ""}${ago(q.date)}</small></span></div>`).join("")}</div>`
+          : `<div class="empty"><span class="ei">${ic("circle-check")}</span>Every question has an answer.</div>`}
 
         <h2>QR codes for the machines</h2>
         <p class="sub small">Print one and stick it on the machine. Scan it with a phone to see the fixes.</p>
-        <div class="stack">${state.machines.map((m) => `
-          <a class="list-item" href="#/sign/${esc(m.machine_id)}"><span style="font-size:22px">⚙️</span>
-            <span class="grow"><b>${esc(m.machine)}</b><br><small class="muted">${m.cards} cards · ${m.experts} ${m.experts === 1 ? "expert" : "experts"}</small></span>
-            <span class="btn small">QR</span></a>`).join("")}</div>
+        <div class="list">${state.machines.map((m) => `
+          <a class="list-item" href="#/sign/${esc(m.machine_id)}"><span class="li-ico">${machineIcon(m.machine_id)}</span>
+            <span class="grow"><b style="font-weight:500">${esc(m.machine)}</b><br><small class="muted">${m.cards} cards · ${m.experts} ${m.experts === 1 ? "expert" : "experts"}</small></span>
+            <span class="btn small">${ic("qr-code")}QR</span></a>`).join("")}</div>
 
         <div class="no-print" style="margin-top:28px">
-          <button class="btn ghost block" id="reset">↺ Reset demo data</button>
+          <button class="btn ghost block" id="reset">${ic("rotate-ccw")}Reset demo data</button>
         </div>`);
       document.getElementById("reset").addEventListener("click", async () => {
         if (!confirm("Reset all data to the demo set?")) return;
-        try { await api("/admin/reset-demo", { method: "POST" }); await refreshMachines(); toast("Demo data reset."); screenDashboard(); }
+        try { await api("/admin/reset-demo", { method: "POST" }); await refreshMachines(); toast("Demo data reset", "rotate-ccw"); screenDashboard(); refreshBalance(); }
         catch (e) { toast(e.message); }
       });
     } catch (e) {
-      render(`<h1>Dashboard</h1><div class="empty"><span class="ei">😕</span>${esc(e.message)}</div>`);
+      render(`<h1>Dashboard</h1><div class="empty"><span class="ei">${ic("file-question")}</span>${esc(e.message)}</div>`);
     }
   }
 
   // ------------------------------------------------------------ screen: machine (QR target)
   async function screenMachine(id) {
-    render(`<div class="machine-hero"><h1>⚙️ …</h1><p>Loading the experts' answers…</p></div><div class="stack"><div class="skeleton"></div></div>`);
+    render(`<div class="machine-hero"><div class="eyebrow">Machine</div><h1><span class="hero-ico">${machineIcon(id, "lg")}</span>…</h1><p>Loading the experts' answers…</p></div><div class="stack"><div class="skeleton"></div><div class="skeleton" style="width:70%"></div></div>`);
     try {
       const m = await api("/machine/" + encodeURIComponent(id));
       render(`
         <div class="machine-hero">
-          <h1>⚙️ ${esc(m.machine)}</h1>
+          <div class="eyebrow">Machine · ${m.cards.length} approved tips</div>
+          <h1><span class="hero-ico">${machineIcon(m.machine_id, "lg")}</span>${esc(m.machine)}</h1>
           <p>${m.cards.length} tips from ${esc(m.experts.join(", "))}</p>
         </div>
-        ${m.alerts.map((a) => `<div class="alert ${a.severity}" style="margin-bottom:10px"><span class="ai">${a.type === "recurring_problem" ? "🔁" : a.type === "knowledge_risk" ? "👤" : "👎"}</span><span>${esc(a.message)}</span></div>`).join("")}
+        ${m.alerts.length ? `<div class="list machine-alerts">${m.alerts.map((a) => alertRow(a, false)).join("")}</div>` : ""}
         <div class="row" style="margin-bottom:14px">
-          <a class="btn primary grow" href="#/challenge/${esc(m.machine_id)}">🎮 Fix-it Challenge</a>
-          <a class="btn grow" href="#/ask">🔎 Ask</a>
+          <a class="btn primary grow" href="#/challenge/${esc(m.machine_id)}">${ic("gamepad")}Fix-it Challenge</a>
+          <a class="btn grow" href="#/ask">${ic("search")}Ask</a>
         </div>
         <div class="stack" data-title>${m.cards.map((c) => cardHTML(c, { feedback: true, titleFromProblem: true })).join("")}</div>`);
     } catch (e) {
-      render(`<div class="empty"><span class="ei">⚙️</span>${esc(e.message)}<br><br><a class="btn" href="#/record">Log the first entry</a></div>`);
+      render(`<div class="empty"><span class="ei">${ic("file-question")}</span>${esc(e.message)}<br><br><a class="btn" href="#/record">${ic("mic")}Log the first entry</a></div>`);
     }
   }
 
@@ -836,13 +891,13 @@ const store = {
     const m = state.machines.find((x) => x.machine_id === id) || { machine: id };
     render(`
       <div class="sign">
-        <div class="muted" style="font-weight:700;letter-spacing:.08em">KNOWFLOW · SCAN ME FOR TIPS</div>
+        <div class="eyebrow" style="justify-content:center">${ic("qr-code")}KnowFlow · scan for tips</div>
         <h1>${esc(m.machine)}</h1>
         <img src="${API}/machine/${encodeURIComponent(id)}/qr.svg" alt="QR code for ${esc(m.machine)}">
         <p class="muted">Problem with this machine? Scan with your phone camera to see how colleagues fixed it.</p>
       </div>
       <div class="row no-print" style="margin-top:14px">
-        <button class="btn primary grow" onclick="window.print()">🖨️ Print sign</button>
+        <button class="btn primary grow" onclick="window.print()">${ic("printer")}Print sign</button>
         <a class="btn grow" href="#/m/${esc(id)}">Open page</a>
       </div>`);
   }
@@ -860,7 +915,7 @@ const store = {
 
   async function screenChallenge(machine, opts = {}) {
     render(`
-      <div class="game-hero"><small>🎮 Fix-it Challenge</small><p>Can you fix it like the experts?</p></div>
+      <div class="game-hero"><div class="eyebrow">${ic("gamepad")}Fix-it Challenge</div><p>Can you fix it like the experts?</p></div>
       <div class="thinking"><div class="spinner"></div><b>AI is building your challenge…</b></div>`);
     let g;
     try {
@@ -869,19 +924,19 @@ const store = {
         exclude: opts.exclude || [],
       } });
     } catch (e) {
-      return render(`<div class="empty"><span class="ei">🎮</span>${esc(e.message)}</div>`);
+      return render(`<div class="empty"><span class="ei">${ic("gamepad")}</span>${esc(e.message)}</div>`);
     }
     lastChallenge = g;
     const L = "ABCD";
     render(`
       <div class="game-hero">
-        <small>🎮 Fix-it Challenge · ${esc(g.machine || "")}</small>
+        <div class="eyebrow">${ic("gamepad")}Fix-it Challenge · ${esc(g.machine || "")}</div>
         <p>${esc(g.situation)}</p>
       </div>
       <div class="game-q">${esc(g.question)}</div>
       <div class="options" id="opts">${g.options.map((o, i) => `
         <button class="option" type="button" data-i="${i}"><span class="letter">${L[i]}</span>
-          <span>${esc(o.text)}<span class="consequence" hidden>${o.correct ? "✓ " : "✗ "}${esc(o.consequence)}</span></span>
+          <span>${esc(o.text)}<span class="consequence ${o.correct ? "ok" : "no"}" hidden>${ic(o.correct ? "check" : "x")}<span>${esc(o.consequence)}</span></span></span>
         </button>`).join("")}</div>
       <div id="after"></div>`);
     const box = document.getElementById("opts");
@@ -902,15 +957,15 @@ const store = {
           <div class="who-says">${avatar(g.expert)} <span>${esc(g.expert)}'s approved tip${g.expert_years ? ` <span class="muted small" style="font-weight:500">· ${g.expert_years} years</span>` : ""}</span></div>
           <blockquote>“${esc(g.expert_tip)}”</blockquote>
           <div class="small muted" style="margin-top:6px">From ${esc(g.expert)}'s card, ${fmtDate(g.tip_date)} · approved by ${esc(g.approved_by || g.expert)}</div>
-          <div style="margin-top:12px;padding-top:12px;border-top:1px dashed var(--line)"><b>Why it works:</b> ${esc(g.explanation)}</div>
+          <div class="why"><div class="eyebrow">Why it works</div>${esc(g.explanation)}</div>
         </div>
         ${pick.correct ? `
-        <div class="badge-earned"><span class="medal">🏅</span><b>${esc(g.badge)}</b><br>
+        <div class="badge-earned"><span class="medal">${ic("award")}</span><b>${esc(g.badge)}</b><br>
           <span class="small muted">You know what ${esc(g.expert)} knows about the ${esc(g.machine || "machine")}.</span></div>` : `
         <div class="answer none" style="margin-top:14px"><b>Not quite, and that's how we learn.</b><br>
-          <span class="small">Now you know the trick. Try another one!</span></div>`}
+          <span class="small">Now you know the trick. Try another one.</span></div>`}
         <div class="row" style="margin-top:14px">
-          <button class="btn primary grow" id="nextGame">🎮 Another challenge</button>
+          <button class="btn primary grow" id="nextGame">${ic("gamepad")}Another challenge</button>
           <a class="btn grow" href="#/m/${esc(g.machine_id || "")}">See all tips</a>
         </div>`;
       document.getElementById("after").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -924,7 +979,7 @@ const store = {
     render(`<h1>Wallet</h1><div class="skeleton" style="height:140px"></div>`);
     let w;
     try { w = await api("/wallet/" + encodeURIComponent(state.user)); }
-    catch (e) { return render(`<div class="empty"><span class="ei">😕</span>${esc(e.message)}</div>`); }
+    catch (e) { return render(`<div class="empty"><span class="ei">${ic("wallet")}</span>${esc(e.message)}</div>`); }
     state.balance = w.balance; renderWho();
     const pct = Math.min(100, Math.round((w.month_eur / w.monthly_cap_eur) * 100));
     const eur = (n) => n.toFixed(2).replace(".", ",") + " €";
@@ -932,19 +987,20 @@ const store = {
       <h1>Wallet</h1>
       <p class="sub">Tokens for knowledge that helps others. ${w.tokens_per_eur} tokens = 1 €.</p>
       <section class="wallet-hero">
-        <div class="wallet-bal"><span class="coin">🪙</span><b id="walletBal">${w.balance}</b><small>tokens</small></div>
+        <div class="eyebrow">Balance</div>
+        <div class="wallet-bal"><span class="coin">${ic("coins")}</span><b id="walletBal">${w.balance}</b><span class="muted">tokens</span></div>
         <div class="wallet-eur">= ${eur(w.balance_eur)}</div>
       </section>
       <section class="panel">
-        <div class="row-between"><b>This month</b><span class="muted">${eur(w.month_eur)} of ${w.monthly_cap_eur} €</span></div>
+        <div class="row-between"><span class="eyebrow" style="margin:0">This month</span><span class="muted">${eur(w.month_eur)} of ${w.monthly_cap_eur} €</span></div>
         <div class="confidence wallet-bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><i style="width:${pct}%"></i></div>
         <small class="muted">Up to ${w.monthly_cap_eur} € a month (tax-free limit) · max ${w.daily_cap} tokens a day · today: ${w.today}</small>
       </section>
-      <button class="btn primary block" id="redeem" type="button">Redeem in canteen</button>
-      <h2>Recent earnings</h2>
+      <button class="btn primary block" id="redeem" type="button">${ic("qr-code")}Redeem in canteen</button>
+      <div class="section-label">Recent earnings</div>
       ${w.events.length ? `<div class="earn-list">${w.events.map((e) => `
         <div class="earn"><b class="earn-amt">+${e.amount}</b><span class="grow">${esc(e.reason)}</span><small class="muted">${fmtDate(e.date)}</small></div>`).join("")}</div>`
-        : `<div class="empty"><span class="ei">🪙</span>No tokens yet. When your card is approved you get 5, and 10 each time your fix works for a colleague.</div>`}
+        : `<div class="empty"><span class="ei">${ic("coins")}</span>No tokens yet. When your card is approved you get 5, and 10 each time your fix works for a colleague.</div>`}
       <p class="small muted" style="margin-top:14px">Tokens reward tips that help, not how much you record. No tokens for drafts, for "Didn't work", or for rating your own card.</p>`);
     document.getElementById("redeem").addEventListener("click", async () => {
       try {
@@ -978,6 +1034,7 @@ const store = {
     }
   }
 
+  document.querySelectorAll("[data-icon]").forEach((el) => (el.innerHTML = ic(el.dataset.icon)));
   window.addEventListener("hashchange", route);
   renderWho();
   refreshBalance();
