@@ -148,6 +148,12 @@ TOKENS = [
     (9, "Herr Müller", 5, "Your card was approved: Press restarted without checking the strip"),
     (5, "Herr Müller", 10, "Your fix worked for Frau Schneider"),
     (2, "Herr Müller", 10, "Your fix worked for Ahmed"),
+    (24, "Frau Schneider", 5, "Your card was approved: Door does not open after the program ends"),
+    (18, "Frau Schneider", 10, "Your fix worked for Ahmed"),
+    (12, "Frau Schneider", 5, "Your card was approved: Water in the air hoses"),
+    (11, "Frau Schneider", 10, "Your fix worked for Lena Kowalski"),
+    (7, "Frau Schneider", 10, "Your fix worked for Ahmed"),
+    (3, "Frau Schneider", 5, "Your card was approved: Compressor starts and stops every few seconds"),
 ]
 
 OPEN_QUESTIONS = [

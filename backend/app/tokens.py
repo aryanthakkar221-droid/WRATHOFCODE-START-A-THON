@@ -7,7 +7,7 @@ One "Worked" per person per card. Max 30 tokens per person per day.
 Demo only: no real payment.
 """
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
 from . import db
@@ -48,6 +48,20 @@ def award(c: sqlite3.Connection, person: Optional[str], amount: int, reason: str
     c.execute("INSERT INTO token_events (date, person, amount, reason, card_id) VALUES (?,?,?,?,?)",
               (date, person, amount, reason, card_id))
     return {"person": person, "amount": amount, "reason": reason, "date": date}
+
+
+def daily_totals(c: sqlite3.Connection) -> Dict[str, Any]:
+    """Tokens earned by everyone per day this month (for the Dashboard sparkline). No per-person data."""
+    start = _month_start()
+    rows = c.execute("SELECT substr(date,1,10) d, SUM(amount) s FROM token_events WHERE date>=? GROUP BY d",
+                     (start,)).fetchall()
+    by_day = {r["d"]: int(r["s"]) for r in rows}
+    today = datetime.now(timezone.utc).date()
+    first = today.replace(day=1)
+    days = [{"date": (first + timedelta(days=i)).isoformat(),
+             "tokens": by_day.get((first + timedelta(days=i)).isoformat(), 0)}
+            for i in range((today - first).days + 1)]
+    return {"month_total": sum(d["tokens"] for d in days), "days": days}
 
 
 def wallet(c: sqlite3.Connection, person: str) -> Dict[str, Any]:

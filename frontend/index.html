@@ -12,11 +12,28 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+  <aside class="sidebar" aria-label="Main">
+    <a class="side-brand" href="#/dashboard"><img class="logo-img" src="logo.png" alt="">KnowFlow</a>
+    <a class="side-cta" href="#/record"><span class="ti" data-icon="plus"></span>Log a shift</a>
+    <nav class="side-nav">
+      <a href="#/dashboard" data-side="dashboard"><span class="ti" data-icon="layout-dashboard"></span>Dashboard</a>
+      <a href="#/record" data-side="record"><span class="ti" data-icon="mic"></span>Record</a>
+      <a href="#/ask" data-side="ask"><span class="ti" data-icon="search"></span>Ask</a>
+      <a href="#/practice" data-side="practice"><span class="ti" data-icon="gamepad"></span>Practice</a>
+      <a href="#/wallet" data-side="wallet"><span class="ti" data-icon="wallet"></span>Wallet</a>
+    </nav>
+    <div class="side-card"><img class="logo-img" src="logo.png" alt=""><b>Knowledge that doesn't retire</b><small>Experts' fixes, approved and kept.</small></div>
+  </aside>
+
   <header class="topbar">
     <a class="brand" href="#/record" aria-label="KnowFlow home">
       <img class="logo-img" src="logo.png" alt="KnowFlow logo">
       <span class="brand-text"><b>KnowFlow</b><small>Knowledge that doesn't retire</small></span>
     </a>
+    <form class="top-search" id="topSearch" role="search">
+      <span class="ti" data-icon="search"></span>
+      <input type="search" id="topQ" placeholder="Ask KnowFlow..." aria-label="Ask KnowFlow" autocomplete="off">
+    </form>
     <button class="who" id="who" type="button" aria-label="Change user"></button>
   </header>
 

@@ -283,7 +283,8 @@ const store = {
   // ------------------------------------------------------------ user picker
   function renderWho() {
     document.getElementById("who").innerHTML = `${avatar(state.user, "sm")}<span>${esc(state.user)}</span>` +
-      (state.balance != null ? `<span class="who-bal" id="whoBal" title="Your tokens">${ic("coins")}${state.balance}</span>` : "");
+      (state.balance != null ? `<span class="who-bal" id="whoBal" title="Your tokens">${ic("coins")}${state.balance}</span>` : "") +
+      `<span class="who-chev" aria-hidden="true">${ic("chevron-right")}</span>`;
   }
   async function refreshBalance() {
     try { state.balance = (await api("/wallet/" + encodeURIComponent(state.user))).balance; } catch (e) { state.balance = null; }
@@ -679,8 +680,7 @@ const store = {
   async function refreshInviteDot() {
     let n = 0;
     try { n = (await api("/meetings/consent?pending_for=" + encodeURIComponent(state.user))).length; } catch (_) {}
-    const t = document.querySelector('#tabs a[data-tab="dashboard"]');
-    if (t) t.classList.toggle("has-dot", n > 0);
+    document.querySelectorAll('#tabs a[data-tab="dashboard"], .side-nav a[data-side="dashboard"]').forEach((t) => t.classList.toggle("has-dot", n > 0));
     return n;
   }
   async function loadInvites() {
@@ -988,13 +988,62 @@ const store = {
       </a>`;
   }
 
+  // ---- small inline-SVG charts (no library, works offline). Hover shows a tooltip from data-tip.
+  const DOTS = `<svg viewBox="0 0 24 24" class="i" aria-hidden="true"><circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/></svg>`;
+  function barChart(weeks) {
+    const W = 560, H = 210, L = 28, B = 26, T = 10, max = Math.max(2, ...weeks.map((w) => Math.max(w.rec, w.one)));
+    const top = Math.ceil(max / 2) * 2, step = (W - L) / weeks.length, y = (v) => T + (H - T - B) * (1 - v / top);
+    const grid = [0, top / 2, top].map((v) => `<line x1="${L}" x2="${W}" y1="${y(v)}" y2="${y(v)}" class="gl"/><text x="${L - 8}" y="${y(v) + 4}" class="ax" text-anchor="end">${v}</text>`).join("");
+    const bars = weeks.map((w, k) => {
+      const x = L + k * step + step / 2;
+      const bar = (v, dx, cls, lbl) => { const h = Math.max(v ? 4 : 0, (H - T - B) * v / top); return v ? `<rect x="${x + dx - 5}" y="${y(0) - h}" width="10" height="${h}" rx="5" class="${cls}" data-tip="${esc(w.label)} · ${lbl}: ${v}"/>` : ""; };
+      return bar(w.rec, -7, "b-rec", "Recurring") + bar(w.one, 7, "b-one", "One-off") + `<text x="${x}" y="${H - 6}" class="ax" text-anchor="middle">${esc(w.label)}</text>`;
+    }).join("");
+    return `<svg viewBox="0 0 ${W} ${H}" class="chart" role="img" aria-label="Problems logged per week">${grid}${bars}</svg>`;
+  }
+  function donut(parts, center, sub) {
+    const total = parts.reduce((a, p) => a + p.v, 0) || 1, R = 42, C = 2 * Math.PI * R;
+    let off = 0;
+    const segs = parts.filter((p) => p.v).map((p) => { const len = C * p.v / total; const el = `<circle r="${R}" cx="60" cy="60" fill="none" stroke="${p.color}" stroke-width="14" stroke-dasharray="${Math.max(len - 2, 0.1)} ${C}" stroke-dashoffset="${-off}" stroke-linecap="butt" data-tip="${esc(p.label)}: ${p.v}"/>`; off += len; return el; }).join("");
+    return `<svg viewBox="0 0 120 120" class="donut" role="img" aria-label="${esc(parts.map((p) => p.label + " " + p.v).join(", "))}">
+      <circle r="${R}" cx="60" cy="60" fill="none" stroke="#F1ECF8" stroke-width="14"/><g transform="rotate(-90 60 60)">${segs}</g>
+      <text x="60" y="${sub ? 60 : 66}" text-anchor="middle" class="d-num">${esc(center)}</text>${sub ? `<text x="60" y="78" text-anchor="middle" class="d-sub">${esc(sub)}</text>` : ""}</svg>`;
+  }
+  function sparkline(days) {
+    // line = 5-day average of tokens per day (smooth); tooltips and the label show the real day values
+    const avg = days.map((_, k) => { const w = days.slice(Math.max(0, k - 2), k + 3); return w.reduce((a, d) => a + d.tokens, 0) / w.length; });
+    const W = 300, H = 130, P = 10, max = Math.max(1, ...avg), n = Math.max(days.length - 1, 1);
+    const pts = avg.map((v, k) => [P + (W - 2 * P) * k / n, H - P - (H - 2 * P) * v / max]);
+    let path = `M${pts[0][0]},${pts[0][1]}`;
+    for (let k = 1; k < pts.length; k++) {   // smooth curve (Catmull-Rom -> Bezier)
+      const p0 = pts[k - 2] || pts[k - 1], p1 = pts[k - 1], p2 = pts[k], p3 = pts[k + 1] || p2;
+      path += ` C${p1[0] + (p2[0] - p0[0]) / 6},${p1[1] + (p2[1] - p0[1]) / 6} ${p2[0] - (p3[0] - p1[0]) / 6},${p2[1] - (p3[1] - p1[1]) / 6} ${p2[0]},${p2[1]}`;
+    }
+    const best = days.reduce((b, d, k) => (d.tokens > days[b].tokens || (d.tokens === days[b].tokens && avg[k] > avg[b]) ? k : b), 0), bp = pts[best];
+    const lbl = `+${days[best].tokens} · ${fmtDate(days[best].date)}`;
+    return `<svg viewBox="0 0 ${W} ${H + 26}" class="spark" role="img" aria-label="Tokens per day this month">
+      <path d="${path}" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" opacity=".95"/>
+      ${pts.map((p, k) => `<circle cx="${p[0]}" cy="${p[1]}" r="7" fill="transparent" data-tip="${esc(fmtDate(days[k].date))}: ${days[k].tokens} tokens"/>`).join("")}
+      <circle cx="${bp[0]}" cy="${bp[1]}" r="5" fill="#fff" stroke="rgba(255,255,255,.35)" stroke-width="6"/>
+      <g transform="translate(${Math.min(Math.max(bp[0], 46), W - 46)},${Math.max(bp[1] - 18, 10)})"><rect x="-44" y="-12" width="88" height="22" rx="11" fill="#fff"/>
+      <text text-anchor="middle" y="3" class="sp-lbl">${esc(lbl)}</text></g></svg>`;
+  }
+  const tipEl = document.createElement("div");
+  tipEl.className = "chart-tip"; tipEl.setAttribute("role", "tooltip"); document.body.appendChild(tipEl);
+  document.addEventListener("mousemove", (e) => {
+    const t = e.target.closest && e.target.closest("[data-tip]");
+    if (!t) { tipEl.style.opacity = 0; return; }
+    tipEl.textContent = t.dataset.tip; tipEl.style.opacity = 1;
+    tipEl.style.left = Math.min(e.clientX + 12, innerWidth - tipEl.offsetWidth - 8) + "px"; tipEl.style.top = (e.clientY - 36) + "px";
+  });
+
   async function screenDashboard() {
     render(`<h1>Dashboard</h1><p class="sub">Where knowledge is at risk, and what keeps coming back.</p>
       <div class="kpis">${'<div class="kpi"><div class="skeleton" style="height:40px;width:50%"></div><div class="skeleton" style="margin-top:12px"></div></div>'.repeat(4)}</div>`);
     try {
-      const [stats, alerts, risk, drafts, openQ, approved] = await Promise.all([
+      const [stats, alerts, risk, drafts, openQ, approved, daily] = await Promise.all([
         api("/stats"), api("/alerts"), api("/risk-map"), api("/entries?status=draft"), api("/open-questions"),
-        api("/entries?status=approved"),
+        api("/entries?status=approved"), api("/tokens/daily").catch(() => ({ month_total: 0, days: [] })),
       ]);
       const weekAgo = Date.now() - 7 * 864e5;
       const newThisWeek = approved.filter((c) => new Date(c.approved_at || c.date) >= weekAgo).length;
@@ -1004,69 +1053,111 @@ const store = {
         ? `<div class="list">${items.map((a) => alertRow(a, false)).join("")}</div>`
         : `<div class="empty"><span class="ei">${ic("circle-check")}</span>${empty}</div>`;
 
+      // problems per week (last 8 weeks, Monday start): recurring = cards in a "keeps happening" alert
+      const recIds = new Set(group("recurring_problem").flatMap((a) => a.card_ids || []));
+      const monday = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x; };
+      const thisWeek = monday(new Date());
+      const weeks = Array.from({ length: 8 }, (_, k) => { const start = new Date(thisWeek); start.setDate(start.getDate() - 7 * (7 - k));
+        return { start, label: start.toLocaleDateString("en-GB", { day: "numeric", month: "short" }), rec: 0, one: 0 }; });
+      [...approved, ...drafts].forEach((c) => {
+        const k = weeks.findIndex((w, idx) => { const end = weeks[idx + 1] ? weeks[idx + 1].start : new Date(8.64e15); return new Date(c.date) >= w.start && new Date(c.date) < end; });
+        if (k >= 0) weeks[k][recIds.has(c.id) ? "rec" : "one"]++;
+      });
+      const pct = Math.round(100 * approved.length / Math.max(approved.length + drafts.length, 1));
+      const cov = { low: 0, medium: 0, high: 0 }; risk.forEach((r) => cov[r.risk]++);
+
       // who knows which machine: approved cards per person per machine
       const people = [...new Set(approved.map((c) => c.author))].sort((a, b) =>
         approved.filter((c) => c.author === b).length - approved.filter((c) => c.author === a).length);
       const cnt = (mid, p) => approved.filter((c) => c.machine_id === mid && c.author === p).length;
       const shade = (n) => "s" + Math.min(n, 4);
       const lvl = { high: ["At risk", "high"], medium: ["Watch", "warn"], low: ["Safe", "recurring"] };
+      const kpi = (tint, icon, num, lbl, trend, cls = "") => `
+        <div class="kpi dk ${cls}"><span class="k-ico ${tint}">${ic(icon)}</span>
+          <span class="k-body"><span class="num">${num}</span><span class="lbl">${lbl}</span><span class="trend">${trend}</span></span>
+          <span class="k-more" aria-hidden="true">${DOTS}</span></div>`;
+      const card = (title, body, extra = "") => `<section class="dcard ${extra}"><div class="dhead"><h2>${title}</h2></div>${body}</section>`;
+      const one = group("knowledge_risk");
 
       render(`
-        <h1>Dashboard</h1>
-        <p class="sub">Where knowledge is at risk, and what keeps coming back.</p>
+        <div class="dash-head"><div><h1>Dashboard</h1>
+          <p class="sub">Where knowledge is at risk, and what keeps coming back.</p></div></div>
         <div id="invites"></div>
 
-        <div class="section-label" style="margin-top:8px">Overview</div>
-        <div class="kpis stats">
-          <div class="kpi"><span class="num">${stats.cards_approved}</span><span class="lbl">Approved cards</span><span class="trend">+${newThisWeek} this week</span></div>
-          <div class="kpi"><span class="num">${stats.open_questions}</span><span class="lbl">Open questions</span><span class="trend">waiting for an expert</span></div>
-          <div class="kpi"><span class="num">${stats.confirmed_fixes}</span><span class="lbl">Fixes that worked</span><span class="trend">across ${approved.filter((c) => c.worked_count).length} cards</span></div>
-          <div class="kpi risk-kpi"><span class="num">${atRisk.length}</span><span class="lbl">Knowledge at risk</span><span class="trend">of ${risk.length} machines</span></div>
+        <div class="kpis stats dash-kpis">
+          ${kpi("t-violet", "badge-check", stats.cards_approved, "Approved cards", `+${newThisWeek} this week`)}
+          ${kpi("t-pink", "circle-check", stats.confirmed_fixes, "Fixes that worked", `across ${approved.filter((c) => c.worked_count).length} cards`)}
+          ${kpi("t-orange", "circle-help", stats.open_questions, "Open questions", "waiting for an expert")}
+          ${kpi("t-red", "shield-alert", atRisk.length, "Machines at risk", `of ${risk.length} machines`, "risk-kpi")}
         </div>
 
-        <div class="section-label">Risks</div>
-        <h2 style="margin-top:0">Keeps happening</h2>
-        ${list(group("recurring_problem"), "Nothing keeps coming back right now.")}
-        <h2>Only one person knows</h2>
-        ${list(group("knowledge_risk"), "Every machine has more than one expert.")}
-        ${group("disputed_fix").length ? `<h2>Fix often fails</h2>${list(group("disputed_fix"), "")}` : ""}
-
-        <h2>Who knows which machine?</h2>
-        <p class="sub small">Approved cards per person. A machine is at risk when only people who are leaving know it.</p>
-        <div class="panel" style="padding:0">
-          <div class="heat-wrap">
-            <div class="risk-grid heat" role="table" aria-label="Approved cards per person and machine">
-              <div class="hrow hhead" role="row"><span class="hcell hname" role="columnheader">Machine</span>${people.map((p) =>
-                `<span class="hcell" role="columnheader"><span class="person">${avatar(p, "sm")}<small>${esc(p.replace(/^(Herr|Frau) /, ""))}</small></span></span>`).join("")}</div>
-              ${risk.map((r) => `
-              <div class="hrow" role="row">
-                <span class="hcell hname" role="rowheader"><a class="risk ${r.risk}" href="#/m/${esc(r.machine_id)}">
-                  <b>${esc(r.machine)}</b><span class="tag ${lvl[r.risk][1]} lvl">${lvl[r.risk][0]}</span></a></span>
-                ${people.map((p) => { const n = cnt(r.machine_id, p); return `<span class="hcell" role="cell"><span class="shade ${shade(n)}" title="${esc(p)}: ${n} cards">${n || "·"}</span></span>`; }).join("")}
-              </div>`).join("")}
+        <div class="dgrid r2">
+          <section class="dcard span2">
+            <div class="dhead"><h2>Problems over time</h2><span class="fake-select">Show by weeks ${ic("chevron-right")}</span></div>
+            <div class="chart-row">
+              <div class="chart-main">${barChart(weeks)}
+                <div class="legend"><span><i style="background:#7B3FE4"></i>Recurring</span><span><i style="background:#CDB8F5"></i>One-off</span></div></div>
+              <div class="chart-side"><h3>Approved vs. waiting</h3>
+                ${donut([{ v: approved.length, color: "#7B3FE4", label: "Approved" }, { v: drafts.length, color: "#F0A6E8", label: "Waiting" }], pct + "%", "approved")}
+                <div class="legend"><span><i style="background:#7B3FE4"></i>Approved ${approved.length}</span><span><i style="background:#F0A6E8"></i>Waiting ${drafts.length}</span></div></div>
             </div>
-          </div>
-          <div class="legend"><span><i class="s1" style="background:#E9DDFB"></i>1 card</span><span><i style="background:#C9AEF4"></i>2</span><span><i style="background:#9C6BEB"></i>3</span><span><i style="background:#7B3FE4"></i>4+</span></div>
+          </section>
+          <section class="dcard">
+            <div class="dhead"><h2>Knowledge coverage</h2></div>
+            <div class="cov">${donut([{ v: cov.low, color: "#7B3FE4", label: "Safe" }, { v: cov.medium, color: "#F5B66B", label: "Watch" }, { v: cov.high, color: "#D92D20", label: "At risk" }], String(risk.length), "machines")}</div>
+            <div class="legend col"><span><i style="background:#7B3FE4"></i>Safe<b>${cov.low}</b></span><span><i style="background:#F5B66B"></i>Watch<b>${cov.medium}</b></span><span><i style="background:#D92D20"></i>At risk<b>${cov.high}</b></span></div>
+          </section>
         </div>
 
-        <div class="section-label">Activity</div>
-        <h2 style="margin-top:0">Waiting for approval <span class="count">${drafts.length}</span></h2>
-        <div class="stack">${drafts.length ? drafts.map((c) => cardHTML(c, { approve: true, showTranscript: true, titleFromProblem: true })).join("")
-          : `<div class="empty"><span class="ei">${ic("inbox")}</span>No drafts. New shift logs show up here until an expert approves them.</div>`}</div>
+        <div class="dgrid r3">
+          ${card("Only one person knows", one.length ? `<div class="list flat">${one.map((a) => `
+            <a class="alert ${a.severity}" href="#/m/${esc(a.machine_id)}">${avatar(a.expert, "sm")}
+              <span class="one-body"><b>${esc(a.machine)}</b><span class="sr-only">${esc(a.message)}</span>
+                <span class="tag ${a.severity === "high" ? "high" : "warn"}">${a.severity === "high" ? "High risk" : "Watch"}</span></span>
+              <span class="count" title="${(a.card_ids || []).length} cards">${(a.card_ids || []).length}</span></a>`).join("")}</div>`
+            : `<div class="empty"><span class="ei">${ic("circle-check")}</span>Every machine has more than one expert.</div>`)}
+          <section class="dcard"><div class="dhead"><h2>Who knows which machine</h2></div>
+            <div class="heat-wrap">
+              <div class="risk-grid heat compact" role="table" aria-label="Approved cards per person and machine">
+                <div class="hrow hhead" role="row"><span class="hcell hname" role="columnheader">Machine</span>${people.map((p) =>
+                  `<span class="hcell" role="columnheader"><span class="person" title="${esc(p)}">${avatar(p, "sm")}</span></span>`).join("")}</div>
+                ${risk.map((r) => `
+                <div class="hrow" role="row">
+                  <span class="hcell hname" role="rowheader"><a class="risk ${r.risk}" href="#/m/${esc(r.machine_id)}">
+                    <b>${esc(r.machine)}</b><span class="tag ${lvl[r.risk][1]} lvl">${lvl[r.risk][0]}</span></a></span>
+                  ${people.map((p) => { const n = cnt(r.machine_id, p); return `<span class="hcell" role="cell"><span class="shade ${shade(n)}" data-tip="${esc(p)}: ${n} cards">${n || "·"}</span></span>`; }).join("")}
+                </div>`).join("")}
+              </div>
+            </div>
+          </section>
+          <section class="dcard hero-card">
+            <div class="dhead"><span class="eyebrow">Tokens earned this month</span><span class="k-more" aria-hidden="true">${DOTS}</span></div>
+            <div class="hero-num">${daily.month_total}</div>
+            <p class="hero-sub">${(daily.month_total / 10).toFixed(2).replace(".", ",")} € for tips that helped colleagues</p>
+            ${daily.days.length ? sparkline(daily.days) : ""}
+          </section>
+        </div>
 
-        <h2>Questions without an answer <span class="count">${openQ.length}</span></h2>
-        ${openQ.length ? `<div class="list">${openQ.map((q) => `
-          <div class="list-item"><span class="li-ico">${ic("circle-help")}</span><span class="grow">${esc(q.question)}<br>
-            <small class="muted">${q.asked_by ? esc(q.asked_by) + " · " : ""}${ago(q.date)}</small></span></div>`).join("")}</div>`
-          : `<div class="empty"><span class="ei">${ic("circle-check")}</span>Every question has an answer.</div>`}
+        <div class="dgrid r4">
+          ${card("Keeps happening", list(group("recurring_problem"), "Nothing keeps coming back right now."))}
+          ${card("Fix often fails", list(group("disputed_fix"), "No fix is failing right now."))}
+          <section class="dcard"><div class="dhead"><h2>Waiting for approval <span class="count">${drafts.length}</span></h2></div>
+            <div class="stack">${drafts.length ? drafts.map((c) => cardHTML(c, { approve: true, showTranscript: true, titleFromProblem: true })).join("")
+              : `<div class="empty"><span class="ei">${ic("inbox")}</span>No drafts. New shift logs show up here until an expert approves them.</div>`}</div></section>
+          <section class="dcard"><div class="dhead"><h2>Questions without an answer <span class="count">${openQ.length}</span></h2></div>
+            ${openQ.length ? `<div class="list flat">${openQ.map((q) => `
+              <div class="list-item"><span class="li-ico">${ic("circle-help")}</span><span class="grow">${esc(q.question)}<br>
+                <small class="muted">${q.asked_by ? esc(q.asked_by) + " · " : ""}${ago(q.date)}</small></span></div>`).join("")}</div>`
+              : `<div class="empty"><span class="ei">${ic("circle-check")}</span>Every question has an answer.</div>`}</section>
+        </div>
 
-        <h2>Machines</h2>
-        <div class="list" id="machineList">${state.machines.map((m) => `
-          <a class="list-item" href="#/m/${esc(m.machine_id)}"><span class="li-ico">${machineIcon(m.machine_id)}</span>
-            <span class="grow"><b style="font-weight:500">${esc(m.machine)}</b><br><small class="muted">${m.cards} cards · ${m.experts} ${m.experts === 1 ? "expert" : "experts"}</small></span>
-            <span class="muted-i">${ic("chevron-right")}</span></a>`).join("")}</div>
+        <section class="dcard"><div class="dhead"><h2>Machines</h2></div>
+          <div class="list flat" id="machineList">${state.machines.map((m) => `
+            <a class="list-item" href="#/m/${esc(m.machine_id)}"><span class="li-ico">${machineIcon(m.machine_id)}</span>
+              <span class="grow"><b style="font-weight:500">${esc(m.machine)}</b><br><small class="muted">${m.cards} cards · ${m.experts} ${m.experts === 1 ? "expert" : "experts"}</small></span>
+              <span class="muted-i">${ic("chevron-right")}</span></a>`).join("")}</div></section>
 
-        <div class="no-print" style="margin-top:28px">
+        <div class="no-print" style="margin-top:24px">
           <button class="btn ghost block" id="reset">${ic("rotate-ccw")}Reset demo data</button>
         </div>`);
       document.getElementById("reset").addEventListener("click", async () => {
@@ -1379,6 +1470,8 @@ const store = {
     const [, name, arg] = (location.hash || "#/record").split("/");
     const tab = { play: "practice", challenge: "practice", meetings: "record" }[name] || name;
     document.querySelectorAll("#tabs a").forEach((a) => a.classList.toggle("active", a.dataset.tab === tab));
+    document.querySelectorAll(".side-nav a").forEach((a) => a.classList.toggle("active", a.dataset.side === tab));
+    document.body.dataset.screen = name || "record";
     document.body.classList.toggle("login-mode", name === "login");
     if (name !== "login" && mapAnim) { cancelAnimationFrame(mapAnim); mapAnim = null; }
     window.scrollTo(0, 0);
@@ -1403,5 +1496,13 @@ const store = {
   refreshBalance();
   Promise.all([refreshMachines(), api("/experts").then((x) => (state.experts = x)).catch(() => {})]).finally(route);
   refreshInviteDot(); setInterval(refreshInviteDot, 5000);
+  // laptop top bar: "Ask KnowFlow..." opens Ask with that question
+  document.getElementById("topSearch").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const v = document.getElementById("topQ").value.trim();
+    if (!v) return;
+    document.getElementById("topQ").value = "";
+    location.hash = "#/ask/" + encodeURIComponent(v);
+  });
 })();
 

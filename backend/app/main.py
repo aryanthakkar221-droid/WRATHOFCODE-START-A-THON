@@ -120,6 +120,13 @@ def reset_demo() -> Dict[str, Any]:
     return {"seeded_cards": seed.seed(reset=True)}
 
 
+@app.get("/tokens/daily", tags=["tokens"])
+def tokens_daily() -> Dict[str, Any]:
+    """Tokens earned by everyone per day this month (Dashboard sparkline)."""
+    with db.conn() as c:
+        return tokens.daily_totals(c)
+
+
 @app.get("/wallet/{person}", tags=["tokens"])
 def get_wallet(person: str) -> Dict[str, Any]:
     """Token balance, this month's progress to the 50 EUR cap, recent earnings."""

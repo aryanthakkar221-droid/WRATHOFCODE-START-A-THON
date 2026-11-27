@@ -307,3 +307,8 @@ def test_ask_small_talk_not_sent_to_experts():
     assert not r.get("general") and r["answered"] and r["steps"]
     r = client.post("/ask", json={"question": "How do I change the oil on the forklift?", "asked_by": "Ahmed"}).json()
     assert not r.get("general")
+
+
+def test_tokens_daily_for_dashboard():
+    d = client.get("/tokens/daily").json()
+    assert d["days"] and d["month_total"] == sum(x["tokens"] for x in d["days"]) and d["month_total"] > 0
